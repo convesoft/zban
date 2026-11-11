@@ -1,0 +1,27 @@
+format_version = 3
+
+[project]
+name = "zban"
+schema = ".mara/schema.yaml"
+
+[content]
+include = ["**/*.mara.md"]
+
+[rules]
+format_version = 1
+files = [".mara/engineering-rules.yaml"]
+
+[query_policy]
+format_version = 1
+files = [".mara/engineering-policy.yaml"]
+definition_files = [".mara/engineering-queries.json"]
+shape_files = [".mara/engineering-shapes.ttl"]
+max_rows = 10000
+
+[[code.languages]]
+name = "rust"
+extensions = ["rs"]
+command = ["rust-analyzer", "scip", ".", "--output", "{output}"]
+position_encoding = "utf8"
+grammar = ".mara/code/rust.wasm"
+query = ".mara/code/rust.scm"
