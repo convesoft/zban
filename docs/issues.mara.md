@@ -1,0 +1,282 @@
+# Issues
+
+An issue is one Markdown file with a short YAML header. This page explains the
+model for users. The specification items below it are the normative contract.
+
+## A quick look
+
+```markdown
+---
+title: Parse issue files
+status: in-progress
+type: feature
+priority: high
+tags:
+  - storage
+parent: zb-9jra34
+blocked_by:
+  - zb-naex76
+created_at: 2026-11-11T20:00:00Z
+---
+
+Load every issue in `.zban/` and `.zban/archive/`.
+
+- [x] Read frontmatter
+- [ ] Preserve unknown keys
+```
+
+The file is `.zban/zb-n938cw--parse-issue-files.md`. Its ID, `zb-n938cw`, comes from
+the filename. The part after `--` is only there to help humans.
+
+## Types, statuses and priorities
+
+These sets are fixed for every project ([[ADR-FIXED-VOCABULARY]]).
+
+| Type | Use for |
+| --- | --- |
+| `epic` | A larger outcome that groups features and tasks. Not worked on directly. |
+| `feature` | A user-facing capability or enhancement |
+| `bug` | Something that is broken |
+| `task` | A concrete piece of work: a chore, or a step of a feature |
+
+| Status | Meaning |
+| --- | --- |
+| `draft` | Captured but not refined. Never offered as ready work. |
+| `todo` | Refined and waiting to be started |
+| `in-progress` | Being worked on |
+| `done` | Finished. Moved to the archive. |
+| `cancelled` | Will not be done (duplicate, obsolete, rejected). Moved to the archive. |
+
+Priorities, highest first: `critical`, `high`, `normal` (the default), `low`, `deferred`.
+
+## Relations
+
+- `parent`: the epic or feature this issue belongs to.
+- `blocked_by`: issues that must be closed before this one can start.
+- `related`: informational links with no effect on readiness.
+- `discovered_from`: the issue that was being worked on when this one was found.
+
+Each relation is written once, on one issue. zban shows the reverse direction
+(children, blocks, related, discovered) when you read the other issue.
+
+## Ready work
+
+`zban list --ready` shows `todo` issues that can start now: their blockers are
+closed and nothing above them in the parent chain is closed or blocked. Epics
+are never ready, because their children carry the work. The precise rule is
+[[DES-READINESS]].
+
+## Closing and the archive
+
+Setting `done` or `cancelled` moves the file to `.zban/archive/` and records
+`closed_at`. Reopening moves it back. Archived issues still show up in `show`,
+in searches, in relations and in `list --all`. zban refuses `done` while the body
+still has unchecked `- [ ]` items, unless you force it.
+
+By convention, a finished issue gets a `## Summary of Changes` section and a
+cancelled one gets `## Reasons for Cancelling`.
+
+## Requirements
+
+:::mara requirement REQ-ONE-FILE
+:mid: 01M764FJ3ZF9DQZ05TX19YZKPY
+:title: Store each issue as one Markdown file
+:status: accepted
+:satisfies: NEED-READABLE-FILES
+
+Each issue is stored as exactly one UTF-8 Markdown file with a YAML frontmatter header under the project's `.zban/` directory. zban needs no other state, such as a database, index or cache, to operate on issues.
+:::
+
+:::mara requirement REQ-PRESERVE-CONTENT
+:mid: 01M764FJ3Z0CDR7D6WGHMJYWXK
+:title: Preserve content an operation does not change
+:status: accepted
+:satisfies: NEED-READABLE-FILES
+:satisfies: NEED-INTEGRITY
+
+When zban rewrites an issue, the body bytes stay unchanged unless the operation edits the body, and frontmatter keys zban does not know are kept. Each file write replaces the file atomically, so an interrupted write never leaves a partially written issue.
+:::
+
+:::mara requirement REQ-MERGE-SAFE-IDS
+:mid: 01M764FJ3ZQ5N4A9NJC8NNK6SA
+:title: Create issue IDs without coordination
+:status: accepted
+:satisfies: NEED-BRANCH-SAFE
+
+zban assigns issue IDs without consulting other branches, checkouts or services. Independently created issues practically never share an ID, a new ID never repeats one already present in the local project, and any duplicates after a merge are reported by [[REQ-CHECK]].
+:::
+
+:::mara requirement REQ-NO-GIT
+:mid: 01M764FJ3ZMN288AGT0HD4V1DW
+:title: Leave version control to the user
+:status: accepted
+:satisfies: NEED-BRANCH-SAFE
+
+zban never runs Git or another version-control command, and it writes only inside the project's `.zban/` directory. Issue changes reach other branches only through the user's ordinary commits and merges. zban works the same in a directory that is not a Git repository.
+:::
+
+:::mara requirement REQ-FIXED-VOCABULARY
+:mid: 01M764FJ3ZJGRCCPD3K9XH12B0
+:title: Use a fixed status, type and priority vocabulary
+:status: accepted
+:satisfies: NEED-ORGANIZE
+
+Status is one of `draft`, `todo`, `in-progress`, `done`, `cancelled`. Type is one of `epic`, `feature`, `bug`, `task`. Priority is one of `critical`, `high`, `normal`, `low`, `deferred`. zban rejects other values on write and reports them when checking. Projects cannot change these sets.
+:::
+
+:::mara requirement REQ-RELATIONS
+:mid: 01M764FJ3ZZZJS6M31EWC6TJMG
+:title: Relate issues to each other
+:status: accepted
+:satisfies: NEED-ORGANIZE
+
+An issue can name at most one parent, any number of blocking issues, any number of related issues, and at most one issue it was discovered from. zban rejects references to unknown issues, references to the issue itself, and cycles through `parent` or `blocked_by`. Reading an issue shows both directions of each relation. Deleting an issue that another issue references is refused.
+:::
+
+:::mara requirement REQ-READY
+:mid: 01M764FJ3ZGP807YGG3R6CBPNN
+:title: Report ready work and why other work waits
+:status: accepted
+:satisfies: NEED-FIND-NEXT
+
+zban lists the issues that can be started now in a deterministic priority order. For any open issue it explains why the issue is not ready, naming the responsible status, type, blocker or ancestor.
+:::
+
+:::mara requirement REQ-CLOSE-CHECKLIST
+:mid: 01M764FJ3Z4DX6RS09TWKY84QC
+:title: Do not mark unfinished checklists done
+:status: accepted
+:satisfies: NEED-TRACK-PROGRESS
+
+Setting an issue to `done` while its body contains unchecked Markdown task items is refused unless the request explicitly forces it. Cancelling is not restricted. Listings show checklist progress as checked and total item counts.
+:::
+
+:::mara requirement REQ-AUTO-ARCHIVE
+:mid: 01M764FJ3ZKD4N35SRK3JR3Y3B
+:title: Archive closed issues automatically
+:status: accepted
+:satisfies: NEED-PROJECT-MEMORY
+
+Closing an issue as `done` or `cancelled` moves its file to `.zban/archive/`, and reopening it moves the file back to `.zban/`. Archived issues remain available to show, search and relations, and are excluded from default listings.
+:::
+
+:::mara requirement REQ-CHECK
+:mid: 01M764FJ3ZBK44WBWNMZ4ZK98W
+:title: Detect and repair inconsistent issue data
+:status: accepted
+:satisfies: NEED-INTEGRITY
+:mitigates: RISK-ID-COLLISION
+
+`zban check` examines the whole project and reports each problem with its file and a stable code: malformed configuration, unparseable files, missing required fields, invalid values, unknown keys, duplicate IDs, references to unknown issues, cycles, a `related` link stored on both issues, open issues under a closed parent, and files in the wrong directory for their status. `zban check --fix` repairs only file placement. Every other finding is left for a human or agent to edit.
+:::
+
+## Design
+
+:::mara design DES-PROJECT-LAYOUT
+:mid: 01M764FJ3ZKR92J7WBBKRNMK2B
+:title: Project directory layout
+:status: accepted
+:satisfies: REQ-ONE-FILE
+:satisfies: REQ-AUTO-ARCHIVE
+
+```text
+.zban/
+  config.toml
+  zb-k3m9x2--parse-issue-files.md     open issues
+  archive/
+    zb-7hq2pd--set-up-ci.md           closed issues
+```
+
+`config.toml` has exactly two keys:
+
+```toml
+format_version = 1   # format of the .zban/ directory; zban refuses formats it does not know
+prefix = "zb"        # ID prefix: 1-8 lowercase ASCII letters or digits, starting with a letter
+```
+
+Unknown configuration keys are errors. `zban init` creates the directory and the configuration. It derives the default prefix from the directory name and accepts `--prefix`. zban finds the project by walking up from the working directory to the nearest `.zban/config.toml`. The global `--root PATH` option overrides that search.
+
+Every `*.md` file directly inside `.zban/` or `.zban/archive/` is an issue. Other files and subdirectories are ignored. Open issues (`draft`, `todo`, `in-progress`) belong in `.zban/`, and closed issues (`done`, `cancelled`) belong in `.zban/archive/`.
+:::
+
+:::mara design DES-ISSUE-ID
+:mid: 01M764FJ3ZP2NBQPN65QHVH1XY
+:title: Issue identifiers and filenames
+:status: accepted
+:satisfies: REQ-MERGE-SAFE-IDS
+
+An ID is `<prefix>-` followed by six characters from the lowercase Crockford base32 alphabet `0123456789abcdefghjkmnpqrstvwxyz`, drawn from operating-system randomness. That gives 2^30 (about 1.07 billion) IDs per prefix. When a generated ID already exists in `.zban/` or `.zban/archive/`, zban draws again.
+
+The filename is `<id>--<slug>.md`; a plain `<id>.md` is also valid. The slug is the title in lowercase with each run of non-alphanumeric ASCII characters replaced by `-`, trimmed of leading and trailing `-`, and cut to 48 characters. The ID is read from the filename (everything before the first `--`, or before `.md`) and is not repeated in the frontmatter, so it has a single source. The slug is never used for lookup and is not renamed when the title changes. Input IDs are matched case-insensitively.
+:::
+
+:::mara design DES-ISSUE-FILE
+:mid: 01M764FJ3ZZGJNFXW9VV1NNVAD
+:title: Issue file format
+:status: accepted
+:satisfies: REQ-ONE-FILE
+:satisfies: REQ-PRESERVE-CONTENT
+:satisfies: REQ-FIXED-VOCABULARY
+:satisfies: REQ-RELATIONS
+:mitigates: RISK-MERGE-CONFLICTS
+
+A file starts with a line `---`, then a YAML mapping, then a closing `---` line. Everything after the closing line is the body: free-form Markdown that zban treats as opaque text. The only exception is task-item counting in [[DES-LIFECYCLE]].
+
+| Key | Required | Value |
+| --- | --- | --- |
+| `title` | yes | Non-empty single-line string |
+| `status` | yes | A status from [[REQ-FIXED-VOCABULARY]] |
+| `type` | yes | A type from [[REQ-FIXED-VOCABULARY]] |
+| `priority` | no | A priority; omitted means `normal`, and zban omits `normal` when writing |
+| `tags` | no | List of distinct lowercase words: letters, digits and single hyphens, starting with a letter |
+| `parent` | no | One issue ID |
+| `blocked_by` | no | List of distinct issue IDs |
+| `related` | no | List of distinct issue IDs. The link is symmetric and stored on one of the two issues. |
+| `discovered_from` | no | One issue ID |
+| `created_at` | yes | RFC 3339 UTC timestamp, set on creation |
+| `closed_at` | when closed | RFC 3339 UTC timestamp. Present exactly while the status is `done` or `cancelled`. |
+
+The header must be plain YAML: no anchors, aliases, custom tags, merge keys or duplicate keys. When zban writes a header, it uses the key order above, writes lists in block style with one item per line, and places unknown keys, preserved verbatim, after the known ones. Empty lists and absent optional values are omitted. There is no `updated_at`; Git history records changes ([[ADR-MERGE-FRIENDLY-FORMAT]]).
+:::
+
+:::mara design DES-READINESS
+:mid: 01M764FJ3ZXCS66TCPPJ3HF04V
+:title: Readiness and ordering
+:status: accepted
+:satisfies: REQ-READY
+
+An issue is ready when all of these hold:
+
+1. its status is `todo`;
+2. its type is not `epic`;
+3. every `blocked_by` target is closed;
+4. no ancestor in its `parent` chain is closed;
+5. no ancestor has a `blocked_by` target that is still open.
+
+A reference to an unknown issue counts as an open blocker. Ready issues are ordered by priority (`critical` first), then `created_at` (oldest first), then ID. For an open issue that is not ready, zban reports every applicable reason: `status`, `epic`, `blocked_by:<id>`, `ancestor_closed:<id>` and `ancestor_blocked:<id>`.
+:::
+
+:::mara design DES-LIFECYCLE
+:mid: 01M764FJ3ZPNXY2WFB1Y624PFS
+:title: Status changes and archiving
+:status: accepted
+:satisfies: REQ-CLOSE-CHECKLIST
+:satisfies: REQ-AUTO-ARCHIVE
+:satisfies: REQ-PRESERVE-CONTENT
+
+Any status can change to any other status; zban enforces no workflow beyond these rules. New issues default to status `todo`, type `task` and priority `normal`.
+
+- **Done with open tasks.** A task item is a list line starting with `- [ ]`, `* [ ]` or `+ [ ]` (unchecked) or the same with `[x]` or `[X]` (checked), at any indentation and outside fenced code blocks. Changing the status to `done` while an unchecked item exists fails unless forced.
+- **Closing.** Entering `done` or `cancelled` sets `closed_at`. Leaving them removes it. Closing never changes children or dependents.
+- **Placement.** After a status change crosses between open and closed, zban first rewrites the file atomically in place (a temporary file renamed over the original), then renames it into the other directory. If the second step is interrupted, the file has the right content in the wrong place, which `zban check --fix` repairs.
+:::
+
+## Scenario
+
+:::mara scenario SCN-PARALLEL-BRANCHES
+:mid: 01M764FJ3Z89Y0KG9KKRR216PZ
+:title: Two agents change issues on separate branches
+:status: accepted
+
+Two agents work in separate worktrees of one repository. Each creates new issues and updates an issue the other does not touch. One agent closes its issue, which moves the file into the archive. Both branches merge through ordinary pull requests without conflicts, because new issues have distinct filenames and the edited issues are different files. A conflict appears only when both branches change the same lines of the same issue, and it is resolved like any text conflict. After the merges, `zban check` reports no problems. Neither agent saw the other's status changes before the merge.
+:::
