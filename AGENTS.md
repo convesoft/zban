@@ -47,8 +47,14 @@ The guide covers finding, starting, updating and closing issues. In this
 repository, also:
 
 - Read the Mara items an issue cites before writing code.
-- Set an issue `done` only when its `Done when` checks actually pass, and name
-  the checks you ran in `## Summary of Changes`.
+- Set an issue `done` only when its `Done when` checks actually pass, apart from
+  CI on its own pull request (next rule), and name the checks you ran in
+  `## Summary of Changes`.
+- If the only check left is CI on the issue's own pull request, tick it, close
+  the issue in that pull request and say in `## Summary of Changes` that CI on
+  the pull request covers it. Pull requests are merged only once CI is green, so
+  the issue reaches `main` closed only if the check passed. If CI fails, fix it
+  in the same pull request.
 - Create issues only with `zban create`, which generates an ID that is unused in
   `.zban/` and `.zban/archive/`. Never choose an ID yourself.
 - Keep to one issue per pull request: file newly discovered work as a new issue
