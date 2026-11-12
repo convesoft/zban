@@ -4,7 +4,7 @@
 Markdown files in your repository, managed through a CLI and an MCP server.
 
 > **Status:** the v1 specification is agreed; implementation is in progress.
-> `init`, `create`, `list`, `show`, `update` and `delete` work; `check`, `prime` and
+> `init`, `create`, `list`, `show`, `update`, `delete` and `check` work; `prime` and
 > `mcp` do not yet. Progress is tracked in [`.zban/`](.zban/).
 
 ## Why

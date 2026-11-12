@@ -120,7 +120,18 @@ instead of overwriting the other change. Show the issue again and retry.
 A file zban cannot read, for example one left with Git conflict markers after a
 merge, does not stop work on the other issues. `list` and `show` skip it with a
 warning, and changes to other issues still work. Fix the file by hand, then run
-`zban check`, which lists every problem with a stable code ([[DES-CHECK]]).
+`zban check`, which lists every problem with a stable code ([[DES-CHECK]]):
+
+```text
+$ zban check
+.zban/zb-k3m9x2.md: error: invalid YAML on line 3: mapping values are not allowed in this context [unparseable]
+.zban/zb-n938cw.md: warning: unknown key `assignee` [unknown_key]
+```
+
+`zban check` exits with status 1 when it finds an error. Warnings alone, such as
+an open issue under a closed parent, exit 0. `zban check --fix` moves each file
+that is in the wrong directory for its status, for example after an interrupted
+close, and leaves every other problem for you to fix.
 
 ## Requirements
 

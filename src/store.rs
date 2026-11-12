@@ -94,10 +94,16 @@ impl Project {
 
     /// Finds the project whose `.zban/config.toml` is nearest above `start`.
     pub fn discover(start: &Path) -> Result<Self> {
+        Self::open(&Self::find_root(start)?)
+    }
+
+    /// The nearest directory at or above `start` that holds
+    /// `.zban/config.toml`. Fails with `project_not_found` when there is none.
+    pub(crate) fn find_root(start: &Path) -> Result<PathBuf> {
         let start = fs::canonicalize(start).map_err(|error| Error::io(start, &error))?;
         for root in start.ancestors() {
-            if root.join(DIR).join(CONFIG).is_file() {
-                return Self::open(root);
+            if config_path(root).is_file() {
+                return Ok(root.to_path_buf());
             }
         }
         Err(Error::new(
@@ -111,21 +117,26 @@ impl Project {
 
     /// Opens the project rooted at `root`.
     pub fn open(root: &Path) -> Result<Self> {
-        let path = root.join(DIR).join(CONFIG);
+        Self::try_open(root)?.map_err(|message| {
+            Error::new(
+                ErrorCode::InvalidConfig,
+                format!("{}: {message}", config_path(root).display()),
+            )
+        })
+    }
+
+    /// Opens the project rooted at `root`. The inner error says why its
+    /// configuration is invalid, without naming the file.
+    pub(crate) fn try_open(root: &Path) -> Result<Result<Self, String>> {
+        let path = config_path(root);
         let bytes = fs::read(&path).map_err(|error| Error::io(&path, &error))?;
         let config = String::from_utf8(bytes)
             .map_err(|_| "not valid UTF-8".to_owned())
-            .and_then(|text| Config::parse(&text))
-            .map_err(|message| {
-                Error::new(
-                    ErrorCode::InvalidConfig,
-                    format!("{}: {message}", path.display()),
-                )
-            })?;
-        Ok(Self {
+            .and_then(|text| Config::parse(&text));
+        Ok(config.map(|config| Self {
             root: root.to_path_buf(),
             config,
-        })
+        }))
     }
 
     pub fn root(&self) -> &Path {
@@ -391,6 +402,11 @@ impl Project {
         }
         Ok(text.into_bytes())
     }
+}
+
+/// The configuration file of the project rooted at `root`.
+pub(crate) fn config_path(root: &Path) -> PathBuf {
+    root.join(DIR).join(CONFIG)
 }
 
 /// Fails with `conflict` unless `file` still holds the bytes that were read

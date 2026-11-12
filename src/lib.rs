@@ -1,6 +1,7 @@
 //! The zban core library: the issue model, the file store and the operations
 //! that the `zban` command line and MCP server adapt.
 
+pub mod check;
 pub mod config;
 pub mod error;
 pub mod id;
@@ -13,9 +14,10 @@ pub mod store;
 pub mod timestamp;
 mod yaml;
 
+pub use check::Finding;
 pub use error::{Error, ErrorCode, Result};
 pub use id::{Id, Prefix};
-pub use issue::{Issue, IssueType, Priority, Problem, ProblemCode, Status};
+pub use issue::{Issue, IssueType, Priority, Problem, ProblemCode, Severity, Status};
 pub use lifecycle::Checklist;
 pub use relations::{Entry, Graph, IssueRef, NotReady, Reverse};
 pub use store::{IssueFile, Project};

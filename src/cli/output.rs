@@ -44,7 +44,6 @@ impl Reply {
     }
 
     /// Makes the command exit with status 1 after printing its output.
-    #[allow(dead_code, reason = "`check` exits with status 1 when it finds errors")]
     pub fn failed(mut self, failed: bool) -> Self {
         self.failed = failed;
         self
