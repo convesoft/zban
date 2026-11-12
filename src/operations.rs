@@ -230,24 +230,25 @@ pub fn list(project: &Project, request: &ListRequest) -> Result<Issues<ListedIss
     let statuses: Vec<Status> = parse_all(&request.statuses)?;
     let types: Vec<IssueType> = parse_all(&request.types)?;
     let priorities: Vec<Priority> = parse_all(&request.priorities)?;
-    // A value that is not an ID names no parent, so it matches nothing.
     let parent = request
         .parent
         .as_deref()
-        .map(|parent| Id::parse_input(project.prefix(), parent));
+        .map(|parent| named(project.prefix(), parent))
+        .transpose()?;
     let search = request.search.as_deref().map(str::to_lowercase);
     let files = project.load()?;
     let graph = Graph::new(&files);
+    // The parent is resolved as `show` resolves it (`DES-CLI`).
+    if let Some(parent) = &parent {
+        graph.resolve(parent)?;
+    }
     let matches = |issue: &Issue| {
         let status = if statuses.is_empty() {
             request.all || !issue.status.is_closed()
         } else {
             statuses.contains(&issue.status)
         };
-        let parent = match &parent {
-            None => true,
-            Some(parent) => parent.is_some() && issue.parent == *parent,
-        };
+        let parent = parent.is_none() || issue.parent == parent;
         let search = search.as_ref().is_none_or(|text| {
             issue.title.to_lowercase().contains(text) || issue.body.to_lowercase().contains(text)
         });
