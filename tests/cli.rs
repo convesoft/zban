@@ -7,10 +7,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use common::{
-    snapshot, stderr, stdout, temp_dir, temp_dir_outside_projects, write_files, zban,
-    zban_with_input,
+    racing_updates, snapshot, stderr, stdout, temp_dir, temp_dir_outside_projects, write_files,
+    zban, zban_with_input,
 };
 use serde_json::Value;
+use zban::ErrorCode;
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
 
@@ -454,10 +455,8 @@ fn invalid_usage_exits_with_status_2() {
     assert_eq!(snapshot(&root.join(".zban"), &[]), before);
 }
 
-/// Every error code of `DES-CLI` except `conflict`, which needs a change
-/// between reading and writing and is produced by
-/// `tests/issue_files.rs::concurrent_change_fails_with_conflict_and_survives`,
-/// and `invalid_handoff`, which comes with the handoff options.
+/// Every error code, taken from `ErrorCode::ALL`, so a new code fails this
+/// test until a case here produces it. `conflict` comes from racing updates.
 // @mara implements VER-CLI
 #[test]
 fn each_error_code_is_produced() {
@@ -558,6 +557,11 @@ fn each_error_code_is_produced() {
             &root,
             &["update", A, "--replace-old", "- [", "--replace-new", "x"],
         ),
+        (
+            "invalid_handoff",
+            &root,
+            &["update", A, "--handoff", "# Heading"],
+        ),
         ("io", &root, &["-C", "missing", "list"]),
     ];
     for (expected, dir, args) in cases {
@@ -565,26 +569,20 @@ fn each_error_code_is_produced() {
     }
     assert_eq!(snapshot(&root.join(".zban"), &[]), before);
 
-    let produced: Vec<_> = cases.iter().map(|(code, _, _)| *code).collect();
-    for code in [
-        "usage",
-        "project_not_found",
-        "project_exists",
-        "invalid_config",
-        "not_found",
-        "ambiguous_id",
-        "unreadable",
-        "invalid_value",
-        "invalid_reference",
-        "cycle",
-        "unchecked_items",
-        "open_children",
-        "referenced",
-        "text_not_found",
-        "text_ambiguous",
-        "io",
-    ] {
-        assert!(produced.contains(&code), "{code}");
+    let raced = fixture("cli-error-codes-conflict");
+    let args = ["--json", "update", A, "--append", "-"];
+    let raced_codes: Vec<_> = racing_updates(&raced, A)
+        .into_iter()
+        .filter(|(_, output)| !output.status.success())
+        .map(|(_, output)| {
+            let (status, value) = document(&args, &output);
+            error_of(&args, status, &value)
+        })
+        .collect();
+    let mut produced: Vec<_> = cases.iter().map(|(code, _, _)| *code).collect();
+    produced.extend(raced_codes.iter().map(String::as_str));
+    for code in ErrorCode::ALL {
+        assert!(produced.contains(&code.as_str()), "no case produces {code}");
     }
     fs::remove_dir_all(outside).unwrap();
 }

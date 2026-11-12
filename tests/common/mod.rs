@@ -123,6 +123,59 @@ pub fn snapshot(dir: &Path, skip: &[&str]) -> Vec<(PathBuf, Vec<u8>)> {
     files
 }
 
+/// Updates issue `id` from several `zban` processes at once, each appending
+/// its own line with `--json update ID --append -`, in rounds until a run
+/// fails with `conflict` because another run replaced the file after its
+/// read. Returns that round: each run's line and output. Each process waits
+/// for its standard input to end, which starts a round's runs together.
+pub fn racing_updates(dir: &Path, id: &str) -> Vec<(String, Output)> {
+    const RUNS: usize = 8;
+    const ROUNDS: usize = 50;
+    for round in 0..ROUNDS {
+        let mut children: Vec<_> = (0..RUNS)
+            .map(|_| {
+                Command::new(env!("CARGO_BIN_EXE_zban"))
+                    .current_dir(dir)
+                    .args(["--json", "update", id, "--append", "-"])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .expect("zban runs")
+            })
+            .collect();
+        let lines: Vec<_> = (0..RUNS)
+            .map(|run| format!("Round {round}, run {run}."))
+            .collect();
+        let mut inputs: Vec<_> = children
+            .iter_mut()
+            .map(|child| child.stdin.take().unwrap())
+            .collect();
+        for (input, line) in inputs.iter_mut().zip(&lines) {
+            input.write_all(line.as_bytes()).unwrap();
+        }
+        drop(inputs);
+        let runs: Vec<_> = lines
+            .into_iter()
+            .zip(children)
+            .map(|(line, child)| (line, child.wait_with_output().unwrap()))
+            .collect();
+        if runs
+            .iter()
+            .any(|(_, output)| json_error_code(output).as_deref() == Some("conflict"))
+        {
+            return runs;
+        }
+    }
+    panic!("no run failed with conflict in {ROUNDS} rounds");
+}
+
+/// The code of the JSON error that `output` prints, if it prints one.
+pub fn json_error_code(output: &Output) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    value["error"]["code"].as_str().map(str::to_owned)
+}
+
 pub fn stderr(output: &Output) -> String {
     String::from_utf8(output.stderr.clone()).unwrap()
 }
