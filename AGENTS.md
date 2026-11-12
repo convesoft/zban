@@ -103,4 +103,6 @@ Pull requests are squash-merged, one issue per pull request. The title follows
 the commit format above and becomes the commit subject on `main`. The
 description becomes the commit body: fill in `.github/pull_request_template.md`,
 tick only the checks you actually ran, link follow-up issues under known
-limitations, and complete the `Refs:` footer.
+limitations, and complete the `Refs:` footer. Write each paragraph of the
+description on a single line: GitHub wraps the squash commit body itself, and
+manual line breaks leave it ragged.
