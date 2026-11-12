@@ -141,14 +141,6 @@ impl<'a> Graph<'a> {
         })
     }
 
-    /// The issues that can start now, in listing order.
-    pub fn ready(&self) -> Vec<IssueRef<'a>> {
-        self.issues()
-            .into_iter()
-            .filter(|found| self.not_ready(found.id, found.issue).is_empty())
-            .collect()
-    }
-
     /// Every reason why issue `id`, in the state `issue`, is not ready. The
     /// issue is ready when there is none. Reasons come grouped by kind in the
     /// order of [`NotReady`]: blockers in `blocked_by` order, ancestors nearest

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use zban::operations::{self, CreateRequest, ListRequest, Replacement, UpdateRequest};
+use zban::operations::{self, CreateRequest, ListRequest, UpdateRequest};
 use zban::{Error, ErrorCode, Project, Result, Surface};
 
 use output::Reply;
@@ -233,7 +233,7 @@ fn execute(command: Command, directory: &Path) -> Result<Reply> {
         }
         Command::Update(args) => {
             let request = args.request(&mut Stdin::default())?;
-            let issue = operations::update(&project()?, &request)?;
+            let issue = operations::update(&project()?, &request, Surface::Cli)?;
             Ok(Reply::new(&issue, human::changed("Updated", &issue)))
         }
         Command::Delete { id } => {
@@ -291,21 +291,10 @@ impl ListArgs {
 
 impl UpdateArgs {
     fn request(self, stdin: &mut Stdin) -> Result<UpdateRequest> {
-        if self.replace_old.len() != self.replace_new.len() {
-            return Err(Error::usage(
-                "give each --replace-old exactly one --replace-new, in the same order",
-            ));
-        }
-        let replacements = self
-            .replace_old
-            .into_iter()
-            .zip(self.replace_new)
-            .map(|(old, new)| Replacement { old, new })
-            .collect();
         Ok(UpdateRequest {
             body: stdin.resolve("--body", self.body)?,
             append: stdin.resolve("--append", self.append)?,
-            handoff: removable(stdin.resolve("--handoff", self.handoff)?, self.no_handoff),
+            handoff: stdin.resolve("--handoff", self.handoff)?,
             id: self.id,
             title: self.title,
             status: self.status,
@@ -313,22 +302,20 @@ impl UpdateArgs {
             priority: self.priority,
             add_tags: self.add_tags,
             remove_tags: self.remove_tags,
-            parent: removable(self.parent, self.no_parent),
+            parent: self.parent,
+            no_parent: self.no_parent,
             add_blocked_by: self.add_blocked_by,
             remove_blocked_by: self.remove_blocked_by,
             add_related: self.add_related,
             remove_related: self.remove_related,
-            discovered_from: removable(self.discovered_from, self.no_discovered_from),
-            replacements,
+            discovered_from: self.discovered_from,
+            no_discovered_from: self.no_discovered_from,
+            replace_old: self.replace_old,
+            replace_new: self.replace_new,
+            no_handoff: self.no_handoff,
             force: self.force,
         })
     }
-}
-
-/// An optional value that an update sets with `--<key>` or removes with
-/// `--no-<key>`.
-fn removable(value: Option<String>, remove: bool) -> Option<Option<String>> {
-    if remove { Some(None) } else { value.map(Some) }
 }
 
 /// Standard input, which at most one option of a request may read.
