@@ -59,8 +59,9 @@ repository, also:
   the pull request covers it. Pull requests are merged only once CI is green, so
   the issue reaches `main` closed only if the check passed. If CI fails, fix it
   in the same pull request.
-- Create issues only with `zban create`, which generates an ID that is unused in
-  `.zban/` and `.zban/archive/`. Never choose an ID yourself.
+- Create issues only with `zban create` or the `create_issue` tool, which
+  generate an ID that is unused in `.zban/` and `.zban/archive/`. Never choose
+  an ID yourself.
 - Keep to one issue per pull request: file newly discovered work as a new issue
   with `--discovered-from` rather than widening the current one.
 
