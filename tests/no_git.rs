@@ -92,13 +92,19 @@ fn every_command_works_outside_git_and_writes_only_inside_zban() {
         ],
     );
     ok(&root, &["delete", &second]);
+    // Check, then repair a closed issue moved back out of the archive by hand.
+    let clean = serde_json::json!({"findings": []});
+    assert_eq!(ok(&root, &["check"]), clean);
+    let archived = root.join(format!(".zban/archive/{first}.md"));
+    fs::rename(&archived, root.join(format!(".zban/{first}.md"))).unwrap();
+    assert_eq!(ok(&root, &["check", "--fix"]), clean);
     let output = zban(&root, &["list", "--all"]);
     assert!(output.status.success());
     assert!(stdout(&output).contains("First"));
 
     assert_eq!(outside_zban(), before);
     assert!(!root.join(".git").exists());
-    assert!(root.join(format!(".zban/archive/{first}.md")).is_file());
+    assert!(archived.is_file());
     fs::remove_dir_all(root).unwrap();
 }
 

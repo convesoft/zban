@@ -358,6 +358,18 @@ fn every_command_prints_one_json_document() {
     assert_eq!(updated["status"], "in-progress");
     assert_eq!(updated["not_ready"], serde_json::json!(["status"]));
 
+    // Closing the parent leaves the child open under it: a warning, exit 0.
+    ok(&root, &["update", parent_id, "-s", "done", "--force"]);
+    let checked = ok(&root, &["check"]);
+    assert_eq!(keys(&checked), ["findings"]);
+    let findings = checked["findings"].as_array().unwrap();
+    assert_eq!(findings.len(), 1, "{checked}");
+    let finding = &findings[0];
+    assert_eq!(keys(finding), ["code", "message", "path", "severity"]);
+    assert_eq!(finding["severity"], "warning");
+    assert_eq!(finding["code"], "open_under_closed");
+    assert_eq!(finding["path"], created["path"]);
+
     let deleted = ok(&root, &["delete", id]);
     assert_eq!(keys(&deleted), issue_keys);
     assert_eq!(deleted["id"], id);
