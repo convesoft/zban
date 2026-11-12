@@ -72,7 +72,9 @@ impl IssueFile {
 
 impl Project {
     /// Creates `.zban/` and its configuration in `directory`. An invalid
-    /// prefix is rejected before anything is created.
+    /// prefix is rejected before anything is created. When writing the
+    /// configuration fails, the new `.zban/` is removed again if it is still
+    /// empty, so that `init` can run again.
     pub fn init(directory: &Path, prefix: Option<&str>) -> Result<Self> {
         Self::init_linking(directory, prefix, hard_link)
     }
@@ -95,12 +97,24 @@ impl Project {
             Err(error) => return Err(Error::io(&dir, &error)),
         }
         let project = Self { root, config };
-        let path = dir.join(CONFIG);
-        let mut staged = Staged::write(&dir, project.config.render().as_bytes())?;
-        if !project.add_file(&mut staged, &path, None, link)? {
-            return Err(Error::io(&path, &io::ErrorKind::AlreadyExists.into()));
+        if let Err(error) = project.write_config(link) {
+            // Only an empty directory is removed: what someone else has put
+            // into it since it was created stays, and so does the directory.
+            let _ = fs::remove_dir(&dir);
+            return Err(error);
         }
         Ok(project)
+    }
+
+    /// Writes the configuration into the `.zban/` that [`Project::init`] has
+    /// just created, leaving no temporary file behind when it fails.
+    fn write_config(&self, link: Link) -> Result<()> {
+        let path = self.dir().join(CONFIG);
+        let mut staged = Staged::write(&self.dir(), self.config.render().as_bytes())?;
+        if !self.add_file(&mut staged, &path, None, link)? {
+            return Err(Error::io(&path, &io::ErrorKind::AlreadyExists.into()));
+        }
+        Ok(())
     }
 
     /// Finds the project whose `.zban/config.toml` is nearest above `start`.
@@ -964,7 +978,48 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let error = Project::init_linking(dir.path(), None, link_broken).unwrap_err();
         assert_eq!(error.code, ErrorCode::Io);
-        // The empty `.zban/` that stays behind is zb-bjyq1s.
+        // Nor does a failed init leave the `.zban/` it created, so that it
+        // can run again.
+        assert!(entries(dir.path()).is_empty());
+        let project = Project::init(dir.path(), None).unwrap();
+        assert_eq!(entries(&project.dir()), [CONFIG]);
+    }
+
+    /// Fails as [`link_broken`] does, after another writer has put a file
+    /// next to `link`.
+    fn link_broken_beside_another_file(original: &Path, link: &Path) -> io::Result<()> {
+        fs::write(link.with_file_name("notes.txt"), "kept").unwrap();
+        link_broken(original, link)
+    }
+
+    /// Fails as linking does when another writer has just created `link`.
+    fn link_taken(_: &Path, link: &Path) -> io::Result<()> {
+        fs::write(link, "kept").unwrap();
+        Err(io::ErrorKind::AlreadyExists.into())
+    }
+
+    // @mara implements VER-ISSUE-FILES
+    #[test]
+    fn a_failed_init_removes_only_the_empty_directory_it_created() {
+        let cases = [
+            (link_broken_beside_another_file as Link, "notes.txt"),
+            (link_taken, CONFIG),
+        ];
+        for (link, kept) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let error = Project::init_linking(dir.path(), None, link).unwrap_err();
+            assert_eq!(error.code, ErrorCode::Io);
+            let zban = dir.path().join(DIR);
+            assert_eq!(entries(&zban), [kept]);
+            assert_eq!(fs::read_to_string(zban.join(kept)).unwrap(), "kept");
+        }
+
+        // An existing `.zban/` without a configuration, as a failed init of
+        // zban 0.1.0 left it, is not a project and stays as it is.
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join(DIR)).unwrap();
+        let error = Project::init(dir.path(), None).unwrap_err();
+        assert_eq!(error.code, ErrorCode::ProjectExists);
         assert!(entries(&dir.path().join(DIR)).is_empty());
     }
 }
