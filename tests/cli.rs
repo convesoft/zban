@@ -282,7 +282,7 @@ fn every_command_prints_one_json_document() {
     let detail_keys = sorted(&[ISSUE_KEYS, DETAIL_KEYS]);
 
     let init = ok(&root, &["init"]);
-    assert_eq!(keys(&init), ["path", "prefix"]);
+    assert_eq!(keys(&init), ["enclosing", "path", "prefix"]);
     assert_eq!(init["prefix"], "zb");
     assert_eq!(
         init["path"].as_str().unwrap(),
@@ -613,7 +613,7 @@ fn list_filters_select_issues_in_listing_order() {
         (&["--parent", E], &[B, A]),
         (&["--parent", E, "--all"], &[B, A, F]),
         (&["--parent", "ZB-AAAAAA"], &[D]),
-        (&["--parent", "nonsense"], &[]),
+        (&["--parent", F, "--all"], &[]),
         (&["--ready"], &[A]),
         (&["--search", "frontmatter"], &[A]),
         (&["--search", "SEARCH"], &[C]),
@@ -684,6 +684,44 @@ fn list_short_options_select_what_the_long_options_select() {
     }
 }
 
+/// `list --parent` resolves its ID as `show` does, so a parent that cannot
+/// be shown fails with the same code instead of listing nothing.
+// @mara implements VER-CLI
+#[test]
+fn list_parent_fails_on_an_issue_show_cannot_find() {
+    let root = fixture("cli-list-parent");
+    write_files(
+        &root,
+        &[
+            (
+                ".zban/zb-kkkkkk.md",
+                &issue("Invalid", "blocked", "task", "", 8, ""),
+            ),
+            (
+                ".zban/zb-wwwwww.md",
+                &issue("Twin", "todo", "task", "", 9, ""),
+            ),
+            (
+                ".zban/archive/zb-wwwwww.md",
+                &issue("Twin", "done", "task", "", 9, ""),
+            ),
+        ],
+    );
+    for (parent, code) in [
+        ("zb-000000", "not_found"),
+        ("nonsense", "not_found"),
+        ("zb-kkkkkk", "unreadable"),
+        ("zb-wwwwww", "ambiguous_id"),
+    ] {
+        assert_eq!(error_code(&root, &["show", parent]), code, "{parent}");
+        assert_eq!(
+            error_code(&root, &["list", "--parent", parent]),
+            code,
+            "{parent}"
+        );
+    }
+}
+
 // @mara implements VER-CLI
 #[test]
 fn commands_outside_a_project_fail_with_project_not_found() {
@@ -729,6 +767,58 @@ fn directory_option_behaves_like_starting_there() {
     assert!(!deep.join(".zban").exists());
     assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
     fs::remove_dir_all(outside).unwrap();
+}
+
+// @mara implements VER-CLI
+#[test]
+fn init_names_the_enclosing_project() {
+    let outer = temp_dir_outside_projects("cli-init-enclosing");
+    let outer_dir = fs::canonicalize(&outer).unwrap().join(".zban");
+    let middle = outer.join("middle");
+    let inner = middle.join("src/inner");
+    fs::create_dir_all(&inner).unwrap();
+
+    let created = ok(&outer, &["init"]);
+    assert_eq!(created["enclosing"], Value::Null);
+    let separate = temp_dir_outside_projects("cli-init-enclosing-human");
+    let output = zban(&separate, &["init"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(stdout(&output).lines().count(), 1, "{}", stdout(&output));
+    assert!(!stdout(&output).contains("note:"));
+    fs::remove_dir_all(separate).unwrap();
+
+    // The note names the enclosing project's `.zban/` and says that the
+    // nested project hides it.
+    let output = zban(&middle, &["init"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let note = stdout(&output)
+        .lines()
+        .nth(1)
+        .unwrap_or_default()
+        .to_owned();
+    assert!(note.starts_with("note: "), "{}", stdout(&output));
+    assert!(note.contains(outer_dir.to_str().unwrap()), "{note}");
+    assert!(note.contains("nested"), "{note}");
+    assert!(stderr(&output).is_empty(), "{}", stderr(&output));
+
+    // `enclosing` is the nearest project above, not the outermost one.
+    ok(&middle, &["create", "In the middle project"]);
+    let middle_dir = fs::canonicalize(&middle).unwrap().join(".zban");
+    let created = ok(&outer, &["-C", inner.to_str().unwrap(), "init"]);
+    assert_eq!(created["enclosing"], middle_dir.to_str().unwrap());
+    assert_eq!(
+        created["path"],
+        fs::canonicalize(&inner)
+            .unwrap()
+            .join(".zban")
+            .to_str()
+            .unwrap()
+    );
+    // Commands run in the nested project no longer see the enclosing one.
+    let count = |dir: &Path| ok(dir, &["list"])["issues"].as_array().unwrap().len();
+    assert_eq!(count(&middle.join("src")), 1);
+    assert_eq!(count(&inner), 0);
+    fs::remove_dir_all(outer).unwrap();
 }
 
 // @mara implements VER-CLI

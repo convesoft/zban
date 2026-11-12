@@ -7,11 +7,21 @@ use std::path::Path;
 use zban::operations::{Initialized, IssueDetail, IssueView, ListedIssue};
 use zban::{Finding, Id, Timestamp};
 
+/// The line printed by `init`, and a note naming the enclosing project of a
+/// nested one (`DES-PROJECT-LAYOUT`).
 pub fn initialized(initialized: &Initialized) -> String {
-    format!(
+    let mut text = format!(
         "Created {} with ID prefix {}\n",
         initialized.path, initialized.prefix
-    )
+    );
+    if let Some(enclosing) = &initialized.enclosing {
+        let _ = writeln!(
+            text,
+            "note: the new project is nested inside the project at {enclosing}; \
+             commands run in the new project no longer see it"
+        );
+    }
+    text
 }
 
 /// The line printed after a mutation, such as `Created zb-a1b2c3: Title`.

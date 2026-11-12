@@ -102,10 +102,8 @@ impl Project {
     /// `.zban/config.toml`. Fails with `project_not_found` when there is none.
     pub(crate) fn find_root(start: &Path) -> Result<PathBuf> {
         let start = fs::canonicalize(start).map_err(|error| Error::io(start, &error))?;
-        for root in start.ancestors() {
-            if config_path(root).is_file() {
-                return Ok(root.to_path_buf());
-            }
+        if let Some(root) = nearest_root(&start) {
+            return Ok(root.to_path_buf());
         }
         Err(Error::new(
             ErrorCode::ProjectNotFound,
@@ -151,6 +149,12 @@ impl Project {
     /// The `.zban/` directory, which holds open issues.
     pub fn dir(&self) -> PathBuf {
         self.root.join(DIR)
+    }
+
+    /// The `.zban/` directory of the nearest project above this one's root.
+    /// Commands run inside this project no longer find that project.
+    pub fn enclosing_dir(&self) -> Option<PathBuf> {
+        nearest_root(self.root.parent()?).map(|root| root.join(DIR))
     }
 
     /// The `.zban/archive/` directory, which holds closed issues.
@@ -449,6 +453,11 @@ impl Project {
 /// The configuration file of the project rooted at `root`.
 pub(crate) fn config_path(root: &Path) -> PathBuf {
     root.join(DIR).join(CONFIG)
+}
+
+/// The nearest directory at or above `start` that holds `.zban/config.toml`.
+fn nearest_root(start: &Path) -> Option<&Path> {
+    start.ancestors().find(|root| config_path(root).is_file())
 }
 
 /// Fails with `conflict` unless `file` still holds the bytes that were read

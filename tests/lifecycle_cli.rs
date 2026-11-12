@@ -236,6 +236,60 @@ fn closing_and_reopening_follow_the_rules_and_move_the_file() {
 
 // @mara implements VER-LIFECYCLE
 #[test]
+fn creating_done_with_an_unchecked_item_fails_and_cannot_be_forced() {
+    let root = fixture("create-done");
+    let before = files(&root);
+
+    // The fenced example does not count, so one item is unchecked.
+    let create_done = ["create", "Ship it", "-s", "done", "--body", A_BODY];
+    let error = fails(&root, &create_done);
+    assert_eq!(error["code"], "unchecked_items");
+    let message = error["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("the new issue has 1 unchecked task item;"),
+        "{message}"
+    );
+    assert_eq!(files(&root), before);
+
+    // `create` has no force.
+    let (status, value) = run_json(&root, &[&create_done[..], &["--force"]].concat());
+    assert_eq!(status, 2, "{value}");
+    assert_eq!(value["error"]["code"], "usage");
+    assert_eq!(files(&root), before);
+
+    // Checked items, cancelling and other statuses are not restricted.
+    let checked = A_BODY.replace("- [ ] Write", "- [x] Write");
+    let done = ok(
+        &root,
+        &["create", "Shipped", "-s", "done", "--body", &checked],
+    );
+    assert_eq!(done["checklist"], json!({"checked": 2, "total": 2}));
+    assert!(done["closed_at"].is_string());
+    let id = done["id"].as_str().unwrap();
+    assert_eq!(done["path"], reported(&root, &archived(id)));
+    let cancelled = ok(
+        &root,
+        &["create", "Dropped", "-s", "cancelled", "--body", A_BODY],
+    );
+    assert_eq!(cancelled["status"], "cancelled");
+    let id = cancelled["id"].as_str().unwrap();
+    assert_eq!(cancelled["path"], reported(&root, &archived(id)));
+    let started = ok(
+        &root,
+        &["create", "Started", "-s", "in-progress", "--body", A_BODY],
+    );
+    assert_eq!(started["checklist"], json!({"checked": 1, "total": 2}));
+
+    // To record such an issue, create it open and force the close.
+    let created = ok(&root, &["create", "Ship it", "--body", A_BODY]);
+    let id = created["id"].as_str().unwrap();
+    let closed = ok(&root, &["update", id, "-s", "done", "--force"]);
+    assert_eq!(closed["path"], reported(&root, &archived(id)));
+    assert_eq!(closed["checklist"], json!({"checked": 1, "total": 2}));
+}
+
+// @mara implements VER-LIFECYCLE
+#[test]
 fn archived_issues_appear_everywhere_but_the_default_listing() {
     let root = fixture("visible");
     ok(&root, &["update", A, "-s", "cancelled", "--force"]);
