@@ -156,6 +156,46 @@ fn task_items_inside_fenced_code_blocks_do_not_count() {
 
 // @mara implements VER-LIFECYCLE
 #[test]
+fn fences_open_blocks_only_where_markdown_opens_them() {
+    let body = "\
+Indented four columns outside a list item, a fence line opens no block:
+
+    ```
+    cargo run -- parse
+
+- [x] Nested example
+  - [x] Two list items deep, a fence may be indented to their content
+    ```markdown
+    - [ ] an example
+    ```
+- [ ] Four columns more than the item's content open no block:
+      ```
+- [ ] Release
+";
+    let project = fixture(
+        "fence-indentation",
+        &[(".zban/zb-aaaaaa.md", &file_text("todo", "", body))],
+    );
+    let files = load(&project);
+    assert_eq!(
+        find(&files, "zb-aaaaaa")
+            .issue
+            .as_ref()
+            .unwrap()
+            .checklist(),
+        Checklist {
+            checked: 2,
+            total: 4
+        }
+    );
+    let before = snapshot(&project);
+    let error = set_status(&project, "zb-aaaaaa", Status::Done, false).unwrap_err();
+    assert_eq!(error.code, ErrorCode::UncheckedItems);
+    assert_eq!(snapshot(&project), before);
+}
+
+// @mara implements VER-LIFECYCLE
+#[test]
 fn every_task_item_form_counts() {
     for item in [
         "- [ ] dash",

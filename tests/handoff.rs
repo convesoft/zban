@@ -248,6 +248,43 @@ fn a_body_with_an_unclosed_fence_refuses_the_note() {
 
 // @mara implements VER-HANDOFF
 #[test]
+fn a_handoff_heading_after_an_indented_fence_line_is_found() {
+    let before_note = "\
+- Example in a list item:
+  ```markdown
+  ## Handoff (2026-01-01T00:00:00Z)
+  ```
+
+Indented four columns outside a list item, a fence line opens no block:
+
+    ```
+
+";
+    let body = format!("{before_note}## Handoff (2026-02-02T00:00:00Z)\n\nOld\n");
+    let root = project("indented-fence", &body);
+    assert_eq!(
+        shown(&root, A)["handoff"],
+        json!({"written_at": "2026-02-02T00:00:00Z", "text": "Old\n"})
+    );
+    assert_eq!(
+        handoff_times(&root),
+        [(A.to_owned(), json!("2026-02-02T00:00:00Z"))]
+    );
+
+    // The note is replaced in place rather than appended a second time.
+    let before = Timestamp::now();
+    ok(&root, &["update", A, "--handoff", "New"]);
+    let text = read(&root);
+    let time = written_at(&text, &before);
+    assert_eq!(
+        text,
+        format!("{HEADER}\n{before_note}## Handoff ({time})\n\nNew\n")
+    );
+    assert_eq!(shown(&root, A)["handoff"]["text"], "New\n");
+}
+
+// @mara implements VER-HANDOFF
+#[test]
 fn several_handoff_sections_make_both_edits_fail() {
     let body = "## Handoff\n\nOne\n\n## Handoff (2026-01-01T00:00:00Z)\n\nTwo\n";
     let root = project("several", body);
