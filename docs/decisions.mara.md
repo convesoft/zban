@@ -111,6 +111,19 @@ zban is written in Rust and ships as one self-contained binary. It is distribute
 v1 supports Linux and macOS on x86_64 and aarch64. Windows is deferred until there is a need for it, because it needs its own handling of atomic file replacement, CRLF line endings and paths.
 :::
 
+:::mara decision ADR-DEPENDENCIES
+:mid: 01M779N7PPXZEFMF6M942DMS6H
+:title: Build on established crates
+:status: accepted
+:justifies: DES-SHARED-CORE
+:justifies: DES-MCP-TOOLS
+:justifies: DES-ISSUE-FILE
+
+zban needs argument parsing, JSON, a YAML parser for issue headers, an MCP server and graph checks over relations. Writing these by hand keeps the dependency tree small, but spends effort on parser and protocol details that maintained crates already handle, and hand-written protocol code tends to lag behind MCP revisions. zban builds on established crates: `clap` for arguments, `serde` and `serde_json` for JSON, a maintained YAML parser that exposes enough detail to reject anchors, aliases, tags and duplicate keys, the official MCP Rust SDK `rmcp` for the server, `petgraph` for cycle and reachability checks over `parent` and `blocked_by`, and `getrandom` for IDs.
+
+The YAML crate parses header values only. A thin text layer splits the header into top-level entries, so unknown keys are kept verbatim and known keys are written in the canonical form of [[DES-ISSUE-FILE]] without a generic YAML serializer. `rmcp` needs the `tokio` runtime; only `zban mcp` starts it, and the core library stays synchronous. The costs are a larger binary and dependency tree. Adding a runtime dependency beyond these needs a recorded decision.
+:::
+
 :::mara decision ADR-NO-CASCADE
 :mid: 01M76XFGSJ81ZR60CGYEMESP5K
 :title: Refuse to close unfinished work rather than cascade

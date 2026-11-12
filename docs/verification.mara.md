@@ -16,7 +16,7 @@ come from actual test runs, cited when an issue is closed.
 :verifies: REQ-FIXED-VOCABULARY
 :verifies: REQ-NO-LOST-UPDATES
 
-Load fixture projects, including a copy of this repository's `.zban/`, and write each issue back without changes. Files already in canonical form are byte-identical. Metadata-only updates leave body bytes and unknown keys intact. Values outside the fixed vocabulary are rejected by create and update and reported by check. A write interrupted before its rename leaves the original file unchanged and no partial issue file. When a file changes between the read and the write of an update, the update fails with `conflict` and the other change survives. Create never replaces an existing file.
+Load fixture projects, including a copy of this repository's `.zban/`, and write each issue back without changes. Files already in canonical form are byte-identical. Metadata-only updates leave body bytes and unknown keys intact. A hand-written header with comments, quoted scalars and flow lists loads, and rewriting it drops the comments and writes the canonical form. Titles that YAML would read as another type, or that contain `: ` or ` #`, survive a write and a read unchanged. The blank line after the header is not part of the body, and an issue with an empty body ends after the closing line. Values outside the fixed vocabulary are rejected by create and update and reported by check. A write interrupted before its rename leaves the original file unchanged and no partial issue file. When a file changes between the read and the write of an update, the update fails with `conflict` and the other change survives. Create never replaces an existing file.
 :::
 
 :::mara verification VER-ID-GENERATION
@@ -49,7 +49,7 @@ Run every command in a temporary directory that is not a Git repository and conf
 :verifies: REQ-RELATIONS
 :verifies: REQ-READY
 
-The fixture contains: A blocking B; an independent C; an epic E; a child D whose parent is blocked; a task G under an epic that sits inside another epic blocked by an open epic J; a draft F; and issues of differing priority and age. The ready list contains exactly the expected issues in priority, age and ID order. Each non-ready issue reports its reasons. A `todo` child of a `draft` parent is ready. Closing A makes B ready. G reports `ancestor_blocked` and becomes ready once J closes. Adding a `related` link that already exists in the reverse direction changes no file, and removing it from either side deletes it from the issue that stores it. References to unknown issues, self references, and cycles through `parent` or `blocked_by` are rejected. Deleting a referenced issue is refused. `show` lists children, blocks, related and discovered issues in the reverse direction.
+The fixture contains: A blocking B; an independent C; an epic E; a child D whose parent is blocked; a task G under an epic that sits inside another epic blocked by an open epic J; a draft F; and issues of differing priority and age. The ready list contains exactly the expected issues in priority, age and ID order. Each non-ready issue reports its reasons. A `todo` child of a `draft` parent is ready. Closing A makes B ready. G reports `ancestor_blocked` and becomes ready once J closes. An issue blocked by an unreadable file is not ready, and an unreadable parent ends the ancestor chain. Adding a `related` link that already exists in the reverse direction changes no file, and removing it from either side deletes it from the issue that stores it. References to unknown issues and self references fail with `invalid_reference`. Cycles through `parent`, through `blocked_by`, and through both together, such as an epic blocked by its own child, fail with `cycle`, and so does a `blocked_by` on an ancestor. Deleting a referenced issue is refused. `show` lists children, blocks, related and discovered issues in the reverse direction.
 :::
 
 :::mara verification VER-LIFECYCLE
@@ -80,7 +80,7 @@ Through the real binary: `update --handoff` adds a timestamped `## Handoff` sect
 :methods: test
 :verifies: REQ-CHECK
 
-Use a corpus of broken projects, one for each finding kind listed in [[REQ-CHECK]]. `zban check` reports each problem with its code, severity and path. It exits non-zero on errors, and exits 0 when it finds only the warnings named in [[REQ-CHECK]]. `zban check --fix` moves only misplaced files, leaves every other finding untouched, and a second check reports no placement findings.
+Use a corpus of broken projects, one for each finding code in [[DES-CHECK]]. `zban check` reports each problem with that code, its severity and path. It exits non-zero on errors, and exits 0 when it finds only the warnings named in [[REQ-CHECK]]. `zban check --fix` moves only misplaced files, leaves every other finding untouched, and a second check reports no placement findings. A misplaced file whose target path is taken stays in place and is still reported.
 :::
 
 :::mara verification VER-CLI
@@ -91,8 +91,11 @@ Use a corpus of broken projects, one for each finding kind listed in [[REQ-CHECK
 :verifies: REQ-JSON-OUTPUT
 :verifies: REQ-LIST-FILTERS
 :verifies: REQ-BODY-EDITS
+:verifies: REQ-DAMAGED-DATA
 
-Run every command with `--json` through the real binary. The output parses as one document with the fields documented in [[DES-CLI]]. Failures return an error object and exit status 1, and invalid usage exits with 2. Each list filter alone and in combination, search and `--all` select the expected issues, in the order defined by [[DES-READINESS]]. Commands run outside a project fail with `project_not_found`. `-C DIR`, given a project root or one of its subdirectories, behaves like starting in `DIR`. Replacing text that is absent or occurs more than once fails without writing. An update that combines replacements, an append and metadata changes is all or nothing. Body input from standard input works for create and update.
+Run every command with `--json` through the real binary. The output parses as one document with the fields documented in [[DES-CLI]]. Failures return an error object and exit status 1, and invalid usage exits with 2. Each error code in [[DES-CLI]] is produced by at least one test. Each list filter alone and in combination, search and `--all` select the expected issues, in the order defined by [[DES-READINESS]], and `--parent` selects direct children only. Commands run outside a project fail with `project_not_found`. `-C DIR`, given a project root or one of its subdirectories, behaves like starting in `DIR`. Replacing text that is absent or occurs more than once fails without writing. `--append` joins its text after exactly one blank line. An update that combines replacements, an append and metadata changes is all or nothing, and one update can check the last task item and set `done`. Body input from standard input works for create and update.
+
+A fixture holds a file with Git conflict markers, an issue with an invalid status, an issue with a dangling `blocked_by` and an ID present in both `.zban/` and `.zban/archive/`. `list` and `show` of other issues succeed and report warnings for the broken files. Updating the issue with the dangling blocker, for example setting it `in-progress`, succeeds. Showing or updating an unreadable issue fails with `unreadable`, and showing the duplicated ID fails with `ambiguous_id`.
 :::
 
 :::mara verification VER-SURFACE-PARITY
@@ -114,7 +117,7 @@ A real MCP client talks to `zban mcp` over stdio and runs a create, block, ready
 :methods: inspection
 :verifies: REQ-AGENT-GUIDE
 
-Snapshot tests cover `zban prime` and the MCP server instructions, both rendered from the same template. The vocabulary lists in the guide equal the enumerations in the code, and every command or tool the guide names exists. `zban prime` outside a project prints nothing and exits 0, and `zban prime -C <project>` from there prints the full guide. A server started inside a project sends the full guide; one started outside sends the short note, which names `directory` and `zban prime -C`. Inspection confirms the guide covers the sections in [[DES-AGENT-GUIDE]] and stays under about 150 lines.
+Snapshot tests cover `zban prime` and the MCP server instructions, both rendered from the same template. The vocabulary lists in the guide equal the enumerations in the code, and every command or tool the guide names exists. `zban prime` outside a project prints nothing and exits 0, and `zban prime -C <project>` from there prints the full guide. `zban prime --json` prints `{"guide": ...}`, with `null` outside a project. A server started inside a project sends the full guide; one started outside sends the short note, which names `directory` and `zban prime -C`. Inspection confirms the guide covers the sections in [[DES-AGENT-GUIDE]] and stays under about 150 lines.
 :::
 
 ## Outcome checks

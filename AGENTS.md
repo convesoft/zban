@@ -85,6 +85,8 @@ Remove a page's "not implemented yet" note once the feature works.
 
 - Keep the core library and thin CLI/MCP adapters split described in `DES-SHARED-CORE`.
   zban starts no external processes (`REQ-NO-GIT`).
+- Use the crates named in `ADR-DEPENDENCIES`. Adding another runtime dependency
+  needs a recorded decision first.
 - Before reporting work as done, run `cargo fmt --all -- --check`,
   `cargo clippy --all-targets -- -D warnings` and `cargo test`. Report which
   checks ran.

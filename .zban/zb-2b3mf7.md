@@ -9,7 +9,7 @@ blocked_by:
 created_at: 2026-11-11T21:00:03Z
 ---
 
-Implements `REQ-RELATIONS` and `DES-READINESS`.
+Implements `REQ-RELATIONS` and `DES-READINESS`, with `petgraph` per `ADR-DEPENDENCIES`.
 
 ## Done when
 

@@ -29,6 +29,9 @@ The file is `.zban/zb-n938cw.md`. Its ID, `zb-n938cw`, is the filename, so you c
 open any issue from its ID: `.zban/<id>.md`, or `.zban/archive/<id>.md` once it is
 closed.
 
+You can edit issues by hand. The header may contain YAML comments, but zban drops
+them whenever it rewrites the header, so keep notes in the body.
+
 ## Types, statuses and priorities
 
 These sets are fixed for every project ([[ADR-FIXED-VOCABULARY]]).
@@ -60,6 +63,10 @@ Priorities, highest first: `critical`, `high`, `normal` (the default), `low`, `d
 
 Each relation is written once, on one issue. zban shows the reverse direction
 (children, blocks, related, discovered) when you read the other issue.
+
+zban refuses relations that could never resolve: a loop through `parent` and
+`blocked_by`, such as an epic blocked by its own child, and an issue blocked by
+one of its own ancestors.
 
 ## Ready work
 
@@ -108,6 +115,13 @@ If an issue file changes between zban reading it and writing it, for example
 because another agent or an editor saved it, zban stops with a `conflict` error
 instead of overwriting the other change. Show the issue again and retry.
 
+## Broken files
+
+A file zban cannot read, for example one left with Git conflict markers after a
+merge, does not stop work on the other issues. `list` and `show` skip it with a
+warning, and changes to other issues still work. Fix the file by hand, then run
+`zban check`, which lists every problem with a stable code ([[DES-CHECK]]).
+
 ## Requirements
 
 :::mara requirement REQ-ONE-FILE
@@ -136,6 +150,16 @@ When zban rewrites an issue, the body bytes stay unchanged unless the operation 
 :satisfies: NEED-INTEGRITY
 
 When an issue file changes between zban reading it and replacing it, for example through another zban process, an editor or a branch switch, zban does not replace it and the operation fails with the error code `conflict`. Creating an issue never replaces an existing file. zban takes no locks.
+:::
+
+:::mara requirement REQ-DAMAGED-DATA
+:mid: 01M779N58NATQJ611QCSYK1PWB
+:title: Keep working when some issue data is broken
+:status: accepted
+:satisfies: NEED-INTEGRITY
+:satisfies: NEED-BRANCH-SAFE
+
+An issue file that cannot be parsed, or invalid data already in the project, such as a reference to a missing issue after a merge, does not stop work on the other issues. Listing and showing skip unreadable files and report each one as a warning. A mutation validates only what the request changes, and fails only when it must read or write an unreadable file. An ID that names more than one file is reported as ambiguous rather than resolved by guessing. `zban check` reports every such problem.
 :::
 
 :::mara requirement REQ-MERGE-SAFE-IDS
@@ -171,7 +195,7 @@ Status is one of `draft`, `todo`, `in-progress`, `done`, `cancelled`. Type is on
 :status: accepted
 :satisfies: NEED-ORGANIZE
 
-An issue can name at most one parent of any type, any number of blocking issues, any number of related issues, and at most one issue it was discovered from. zban rejects references to unknown issues, references to the issue itself, and cycles through `parent` or `blocked_by`. Reading an issue shows both directions of each relation. Deleting an issue that another issue references is refused.
+An issue can name at most one parent of any type, any number of blocking issues, any number of related issues, and at most one issue it was discovered from. zban rejects references to unknown issues, references to the issue itself, cycles through `parent` and `blocked_by` edges taken together, and a `blocked_by` that names one of the issue's own ancestors, because each of these can never resolve without forcing a close. Reading an issue shows both directions of each relation. Deleting an issue that another issue references is refused.
 :::
 
 :::mara requirement REQ-READY
@@ -208,7 +232,7 @@ Closing an issue as `done` or `cancelled` moves its file to `.zban/archive/`, an
 :satisfies: NEED-INTEGRITY
 :mitigates: RISK-ID-COLLISION
 
-`zban check` examines the whole project and reports each problem with its file and a stable code: malformed configuration, filenames that are not valid IDs, unparseable files, missing required fields, invalid values, unknown keys, duplicate IDs, references to unknown issues, cycles, a `related` link stored on both issues, open issues under a closed parent, and files in the wrong directory for their status. Unknown keys, a `related` link stored on both issues, and an open issue under a closed parent are warnings. Every other finding is an error, and only errors make the check fail. `zban check --fix` repairs only file placement. Every other finding is left for a human or agent to edit.
+`zban check` examines the whole project and reports each problem with its file and a stable code: malformed configuration, filenames that are not valid IDs, unparseable files, missing required fields, invalid values, unknown keys, duplicate IDs, references to unknown issues or to the issue itself, cycles and blockers on an ancestor as defined in [[REQ-RELATIONS]], a `related` link stored on both issues, open issues under a closed parent, and files in the wrong directory for their status. Unknown keys, a `related` link stored on both issues, and an open issue under a closed parent are warnings. Every other finding is an error, and only errors make the check fail. `zban check --fix` repairs only file placement. Every other finding is left for a human or agent to edit.
 :::
 
 ## Design
@@ -261,7 +285,7 @@ The filename is `<id>.md` and nothing else. The ID is read from the filename and
 :satisfies: REQ-RELATIONS
 :mitigates: RISK-MERGE-CONFLICTS
 
-A file starts with a line `---`, then a YAML mapping, then a closing `---` line. Everything after the closing line is the body: free-form Markdown that zban treats as opaque text. The only exceptions are task-item counting in [[DES-LIFECYCLE]] and the handoff section in [[DES-HANDOFF]].
+A file starts with a line `---`, then a YAML mapping, then a closing `---` line. One blank line directly after the closing line separates header and body and is not part of the body. Everything after it is the body: free-form Markdown that zban treats as opaque text. The only exceptions are task-item counting in [[DES-LIFECYCLE]] and the handoff section in [[DES-HANDOFF]].
 
 | Key | Required | Value |
 | --- | --- | --- |
@@ -281,7 +305,9 @@ Timestamps are RFC 3339 in UTC, written to whole seconds with a `Z` suffix, such
 
 Adding a `related` link that already exists in either direction changes nothing. Removing a link edits whichever issue stores it, which may be the other issue.
 
-The header must be plain YAML: no anchors, aliases, custom tags, merge keys or duplicate keys. When zban writes a header, it uses the key order above, writes lists in block style with one item per line, and places unknown keys, preserved verbatim, after the known ones. Empty lists and absent optional values are omitted. There is no `updated_at`; Git history records changes ([[ADR-MERGE-FRIENDLY-FORMAT]]).
+The header must be plain YAML: no anchors, aliases, custom tags, merge keys or duplicate keys. Hand-written headers may use plain, single-quoted or double-quoted scalars, block or flow lists, and comments. When zban writes a header, it uses the key order above, writes a string as a plain scalar when a YAML 1.2 parser reads it back as the same string and double-quoted otherwise, writes lists in block style with one item per line indented by two spaces, and places unknown keys, preserved verbatim, after the known ones. Comments are not kept when zban rewrites a header. Empty lists and absent optional values are omitted. There is no `updated_at`; Git history records changes ([[ADR-MERGE-FRIENDLY-FORMAT]]).
+
+When zban writes a file, it writes the closing line, one blank line and the body, or ends the file after the closing line when the body is empty. Text given as a new body, appended text and a handoff note are stored ending with exactly one LF. Appending to a non-empty body joins the text after exactly one blank line.
 :::
 
 :::mara design DES-READINESS
@@ -298,7 +324,7 @@ An issue is ready when all of these hold:
 4. no ancestor in its `parent` chain is closed;
 5. no ancestor has a `blocked_by` target that is still open.
 
-Only closed or blocked ancestors hold an issue back. An ancestor's type, or its status `draft` or `in-progress`, does not. A reference to an unknown issue counts as an open blocker. Ready issues, like every listing, are ordered by priority (`critical` first), then `created_at` (oldest first), then ID. For an open issue that is not ready, zban reports every applicable reason: `status`, `epic`, `blocked_by:<id>`, `ancestor_closed:<id>` and `ancestor_blocked:<id>`. In `blocked_by:<id>` the ID is the open blocker. In `ancestor_closed:<id>` and `ancestor_blocked:<id>` it is the ancestor, one reason per affected ancestor; showing that ancestor tells what blocks it.
+Only closed or blocked ancestors hold an issue back. An ancestor's type, or its status `draft` or `in-progress`, does not. An unknown or unreadable issue ([[REQ-DAMAGED-DATA]]) counts as open: as a blocker it holds its dependents back, and as a parent it ends the ancestor chain. Ready issues, like every listing, are ordered by priority (`critical` first), then `created_at` (oldest first), then ID. For an open issue that is not ready, zban reports every applicable reason: `status`, `epic`, `blocked_by:<id>`, `ancestor_closed:<id>` and `ancestor_blocked:<id>`. In `blocked_by:<id>` the ID is the open blocker. In `ancestor_closed:<id>` and `ancestor_blocked:<id>` it is the ancestor, one reason per affected ancestor; showing that ancestor tells what blocks it.
 :::
 
 :::mara design DES-LIFECYCLE
@@ -313,8 +339,35 @@ Any status can change to any other status; zban enforces no workflow beyond thes
 
 - **Done with open tasks.** A task item is a list line starting with `- [ ]`, `* [ ]` or `+ [ ]` (unchecked) or the same with `[x]` or `[X]` (checked), at any indentation and outside fenced code blocks. Changing the status to `done` while an unchecked item exists fails unless forced.
 - **Close with open children.** Changing the status to `done` or `cancelled` while an issue whose `parent` is this one is open fails unless forced. The error names the open children.
+- **Checked state.** Both rules apply to the issue as the request leaves it, so one update can check the last task item, append a summary and set `done`.
 - **Closing.** Entering `done` or `cancelled` sets `closed_at`. Leaving them removes it. Closing never changes children or dependents ([[ADR-NO-CASCADE]]).
 - **Placement.** After a status change crosses between open and closed, zban first rewrites the file atomically in place (a temporary file renamed over the original), then renames it into the other directory. If the second step is interrupted, the file has the right content in the wrong place, which `zban check --fix` repairs.
+:::
+
+:::mara design DES-CHECK
+:mid: 01M779N2S6013TMF0ZXVSNVZBN
+:title: Check findings and repair
+:status: accepted
+:satisfies: REQ-CHECK
+
+`zban check` reports findings ordered by path, then code. In JSON each finding is `{severity, code, path, message}`; human output prints one line per finding.
+
+| Code | Severity | Finding |
+| --- | --- | --- |
+| `invalid_config` | error | `config.toml` is unparseable, has an unknown key or `format_version`, or an invalid prefix. When it is reported, check reports nothing else. |
+| `invalid_filename` | error | A Markdown file whose name is not a valid ID ([[DES-ISSUE-ID]]) |
+| `unparseable` | error | No frontmatter, invalid YAML, or YAML outside the plain subset of [[DES-ISSUE-FILE]], such as Git conflict markers |
+| `missing_field` | error | A required key is absent, including `closed_at` on a closed issue |
+| `invalid_value` | error | A value breaks [[DES-ISSUE-FILE]], including `closed_at` on an open issue |
+| `unknown_key` | warning | A frontmatter key zban does not know |
+| `duplicate_id` | error | One ID names a file in both `.zban/` and `.zban/archive/` |
+| `invalid_reference` | error | A relation names an unknown issue or the issue itself. A reference to an existing but unreadable file is not reported again. |
+| `cycle` | error | The issue is on a cycle through `parent` and `blocked_by`, or is blocked by one of its own ancestors ([[REQ-RELATIONS]]) |
+| `related_both_sides` | warning | The same `related` link is stored on both issues |
+| `open_under_closed` | warning | An open issue whose parent is closed |
+| `misplaced` | error | A file in the wrong directory for its status |
+
+`--fix` moves each misplaced file into the directory its status requires, unless a file already exists at the target path; that finding then remains. The fixed findings are not reported.
 :::
 
 ## Scenario

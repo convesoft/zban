@@ -9,7 +9,7 @@ blocked_by:
 created_at: 2026-11-11T21:00:05Z
 ---
 
-Implements `REQ-CHECK`, including the `check` command.
+Implements `REQ-CHECK` and `DES-CHECK`, including the `check` command.
 
 ## Done when
 

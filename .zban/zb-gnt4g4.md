@@ -10,7 +10,9 @@ blocked_by:
 created_at: 2026-11-11T21:00:06Z
 ---
 
-Implements `DES-CLI` for `init`, `create`, `list`, `show`, `update` and `delete`, and satisfies `REQ-NO-GIT`. The `check`, `prime` and `mcp` commands come with their own issues.
+Implements `DES-CLI` for `init`, `create`, `list`, `show`, `update` and `delete`, and satisfies `REQ-NO-GIT` and `REQ-DAMAGED-DATA`. Dependencies follow `ADR-DEPENDENCIES`.
+The `check`, `prime` and `mcp` commands come with their own issues, and the handoff
+options and fields with zb-qkj8tj.
 
 ## Done when
 

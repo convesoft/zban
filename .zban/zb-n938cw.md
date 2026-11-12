@@ -9,7 +9,8 @@ blocked_by:
 created_at: 2026-11-11T21:00:02Z
 ---
 
-Implements `DES-PROJECT-LAYOUT` (including `init`), `DES-ISSUE-ID` and `DES-ISSUE-FILE`.
+Implements `DES-PROJECT-LAYOUT` (including `init`), `DES-ISSUE-ID` and `DES-ISSUE-FILE`,
+with the YAML crate chosen per `ADR-DEPENDENCIES`.
 
 ## Done when
 
