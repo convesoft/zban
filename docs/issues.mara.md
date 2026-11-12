@@ -115,6 +115,11 @@ If an issue file changes between zban reading it and writing it, for example
 because another agent or an editor saved it, zban stops with a `conflict` error
 instead of overwriting the other change. Show the issue again and retry.
 
+zban commands that write at the same moment take turns. Each holds a short
+lock on `.zban/` while it checks and replaces a file, so when two agents update
+one issue together, neither change is lost: at worst one of them gets `conflict`
+and retries. The lock lasts only for that step and leaves no file behind.
+
 ## Broken files
 
 A file zban cannot read, for example one left with Git conflict markers after a
@@ -161,7 +166,7 @@ When zban rewrites an issue, the body bytes stay unchanged unless the operation 
 :status: accepted
 :satisfies: NEED-INTEGRITY
 
-When an issue file changes between zban reading it and replacing it, for example through another zban process, an editor or a branch switch, zban does not replace it and the operation fails with the error code `conflict`. Creating an issue never replaces an existing file. zban takes no locks.
+When an issue file changes between zban reading it and replacing it, for example through another zban process, an editor or a branch switch, zban does not replace it and the operation fails with the error code `conflict`. Of several zban processes that change one issue at the same time, each either writes its change without dropping another's or fails with `conflict`. Creating an issue never replaces an existing file.
 :::
 
 :::mara requirement REQ-DAMAGED-DATA
@@ -380,7 +385,7 @@ Any status can change to any other status; zban enforces no workflow beyond thes
 | `misplaced` | error | A file in the wrong directory for its status |
 | `temporary_file` | warning | A file named `.zban-*.tmp` directly inside `.zban/` or `.zban/archive/`. zban writes through such files ([[REQ-PRESERVE-CONTENT]]), and an interrupted write leaves one behind. |
 
-`--fix` moves each misplaced file into the directory its status requires, unless a file already exists at the target path; that finding then remains. It also deletes each leftover temporary file. The fixed findings are not reported. Because zban takes no locks ([[REQ-NO-LOST-UPDATES]]), `--fix` can delete the temporary file of a write that is still running; that write then fails with `io` and leaves its issue unchanged.
+`--fix` moves each misplaced file into the directory its status requires, unless a file already exists at the target path; that finding then remains. It also deletes each leftover temporary file. The fixed findings are not reported. Because zban writes its temporary files before it takes the lock of [[DES-SHARED-CORE]], `--fix` can delete the temporary file of a write that is still running; that write then fails with `io` and leaves its issue unchanged.
 :::
 
 ## Scenario

@@ -80,7 +80,7 @@ blocks the binary until you run `xattr -d com.apple.quarantine ~/.local/bin/zban
 
 ### From source
 
-With a stable Rust toolchain, build a release tag, replacing `vX.Y.Z` with the
+With Rust 1.89 or later, build a release tag, replacing `vX.Y.Z` with the
 release you want, such as `v0.1.0`:
 
 ```sh

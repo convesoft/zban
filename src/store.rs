@@ -3,9 +3,10 @@
 //! Every write goes through a temporary file in the target directory that is
 //! renamed or linked into place, so an interrupted write never leaves a
 //! partial issue file (`REQ-PRESERVE-CONTENT`). Replacing a file first checks
-//! that it still holds the bytes that were read (`REQ-NO-LOST-UPDATES`).
+//! that it still holds the bytes that were read (`REQ-NO-LOST-UPDATES`), under
+//! a lock on `.zban/` that lasts until the file is replaced (`ADR-WRITE-LOCK`).
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
@@ -325,8 +326,10 @@ impl Project {
             // Keep the file's permissions; a failure here is not worth failing for.
             let _ = fs::set_permissions(&staged.path, metadata.permissions());
         }
-        unchanged(file)?;
-        staged.rename(&file.path)?;
+        self.locked(|| {
+            unchanged(file)?;
+            staged.rename(&file.path)
+        })?;
         Ok(self.file(file.path.clone(), file.archived, bytes))
     }
 
@@ -339,22 +342,24 @@ impl Project {
         let Some(issue) = &file.issue else {
             return Ok(file.clone());
         };
-        let Some(target) = self.destination(file, issue.status.is_closed())? else {
-            return Ok(file.clone());
-        };
-        if let Some(dir) = target.parent() {
-            fs::create_dir_all(dir).map_err(|error| Error::io(dir, &error))?;
-        }
-        if let Err(error) = fs::rename(&file.path, &target) {
-            if error.kind() == io::ErrorKind::NotFound && !file.path.exists() {
-                return Err(conflict(file, "was moved or deleted"));
+        self.locked(|| {
+            let Some(target) = self.destination(file, issue.status.is_closed())? else {
+                return Ok(file.clone());
+            };
+            if let Some(dir) = target.parent() {
+                fs::create_dir_all(dir).map_err(|error| Error::io(dir, &error))?;
             }
-            return Err(Error::io(&target, &error));
-        }
-        Ok(IssueFile {
-            path: target,
-            archived: !file.archived,
-            ..file.clone()
+            if let Err(error) = fs::rename(&file.path, &target) {
+                if error.kind() == io::ErrorKind::NotFound && !file.path.exists() {
+                    return Err(conflict(file, "was moved or deleted"));
+                }
+                return Err(Error::io(&target, &error));
+            }
+            Ok(IssueFile {
+                path: target,
+                archived: !file.archived,
+                ..file.clone()
+            })
         })
     }
 
@@ -407,9 +412,23 @@ impl Project {
                 ),
             ));
         }
-        unchanged(file)?;
-        fs::remove_file(&file.path).map_err(|error| Error::io(&file.path, &error))?;
+        self.locked(|| {
+            unchanged(file)?;
+            fs::remove_file(&file.path).map_err(|error| Error::io(&file.path, &error))
+        })?;
         Ok(file)
+    }
+
+    /// Runs `write` while holding an exclusive advisory lock on `.zban/`, so
+    /// that no other zban process replaces, moves or deletes an issue file
+    /// between the checks in `write` and its change (`ADR-WRITE-LOCK`). The
+    /// lock waits for another holder and is released when `write` returns.
+    // @mara implements DES-SHARED-CORE
+    fn locked<T>(&self, write: impl FnOnce() -> Result<T>) -> Result<T> {
+        let dir = self.dir();
+        let handle = File::open(&dir).map_err(|error| Error::io(&dir, &error))?;
+        handle.lock().map_err(|error| Error::io(&dir, &error))?;
+        write()
     }
 
     /// Renders an issue for writing, after checking that it is valid and
