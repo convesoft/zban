@@ -64,7 +64,9 @@ macro_rules! vocabulary {
 
 vocabulary!(
     /// An issue's status.
-    Status, "status", [
+    Status,
+    "status",
+    [
         Draft = "draft",
         Todo = "todo",
         InProgress = "in-progress",
@@ -75,7 +77,9 @@ vocabulary!(
 
 vocabulary!(
     /// An issue's type.
-    IssueType, "type", [
+    IssueType,
+    "type",
+    [
         Epic = "epic",
         Feature = "feature",
         Bug = "bug",
@@ -85,7 +89,9 @@ vocabulary!(
 
 vocabulary!(
     /// An issue's priority, ordered highest first.
-    Priority, "priority", [
+    Priority,
+    "priority",
+    [
         Critical = "critical",
         High = "high",
         Normal = "normal",
