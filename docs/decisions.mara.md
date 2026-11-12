@@ -52,6 +52,8 @@ A configurable vocabulary forces every tool and agent to read configuration firs
 :justifies: DES-ISSUE-ID
 
 Sequential numbers collide when parallel branches create issues, and they need a shared counter. UUIDs never collide but are noisy, and the short forms people cite are only prefixes, which can become ambiguous. Four random base36 characters, about 1.7 million values, leave a noticeable chance of collisions across branches in a long-lived project. zban uses its prefix plus six random Crockford base32 characters, about a billion values per prefix, and `zban check` detects any duplicate. IDs carry no order; `created_at` provides it.
+
+The filename is the bare ID, without a slug of the title. A slug goes stale when the title changes, or causes rename churn if it follows the title. Without one, an agent opens an issue straight from its ID, two issues that share an ID land on the same path so Git reports the collision when merging, and there are no slugging rules to specify. Listing titles is left to `zban list`.
 :::
 
 :::mara decision ADR-AUTO-ARCHIVE
@@ -126,7 +128,7 @@ Two agents on different branches may both see an issue as ready and start it, be
 :consequence: minor
 :threatens: REQ-MERGE-SAFE-IDS
 
-Two branches could generate the same random ID. The files have different slugs, so Git merges both silently and the ID becomes ambiguous. With 2^30 values per prefix, a thousand issues created on each of two branches collide with a probability of about 0.1%.
+Two branches could generate the same random ID. Both issues are then `<id>.md`, so the merge stops with an add/add conflict that has to be resolved by giving one issue a new ID. The collision merges silently only when one copy was already archived on its branch, so the paths differ; the ID is then ambiguous until `zban check` reports it. With 2^30 values per prefix, a thousand issues created on each of two branches collide with a probability of about 0.1%.
 :::
 
 :::mara risk RISK-MERGE-CONFLICTS

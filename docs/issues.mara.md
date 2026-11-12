@@ -25,8 +25,9 @@ Load every issue in `.zban/` and `.zban/archive/`.
 - [ ] Preserve unknown keys
 ```
 
-The file is `.zban/zb-n938cw--parse-issue-files.md`. Its ID, `zb-n938cw`, comes from
-the filename. The part after `--` is only there to help humans.
+The file is `.zban/zb-n938cw.md`. Its ID, `zb-n938cw`, is the filename, so you can
+open any issue from its ID: `.zban/<id>.md`, or `.zban/archive/<id>.md` once it is
+closed.
 
 ## Types, statuses and priorities
 
@@ -192,7 +193,7 @@ Closing an issue as `done` or `cancelled` moves its file to `.zban/archive/`, an
 :satisfies: NEED-INTEGRITY
 :mitigates: RISK-ID-COLLISION
 
-`zban check` examines the whole project and reports each problem with its file and a stable code: malformed configuration, unparseable files, missing required fields, invalid values, unknown keys, duplicate IDs, references to unknown issues, cycles, a `related` link stored on both issues, open issues under a closed parent, and files in the wrong directory for their status. Unknown keys, a `related` link stored on both issues, and an open issue under a closed parent are warnings. Every other finding is an error, and only errors make the check fail. `zban check --fix` repairs only file placement. Every other finding is left for a human or agent to edit.
+`zban check` examines the whole project and reports each problem with its file and a stable code: malformed configuration, filenames that are not valid IDs, unparseable files, missing required fields, invalid values, unknown keys, duplicate IDs, references to unknown issues, cycles, a `related` link stored on both issues, open issues under a closed parent, and files in the wrong directory for their status. Unknown keys, a `related` link stored on both issues, and an open issue under a closed parent are warnings. Every other finding is an error, and only errors make the check fail. `zban check --fix` repairs only file placement. Every other finding is left for a human or agent to edit.
 :::
 
 ## Design
@@ -207,9 +208,9 @@ Closing an issue as `done` or `cancelled` moves its file to `.zban/archive/`, an
 ```text
 .zban/
   config.toml
-  zb-k3m9x2--parse-issue-files.md     open issues
+  zb-k3m9x2.md      open issues
   archive/
-    zb-7hq2pd--set-up-ci.md           closed issues
+    zb-7hq2pd.md    closed issues
 ```
 
 `config.toml` has exactly two keys:
@@ -232,7 +233,7 @@ Every `*.md` file directly inside `.zban/` or `.zban/archive/` is an issue. Othe
 
 An ID is `<prefix>-` followed by six characters from the lowercase Crockford base32 alphabet `0123456789abcdefghjkmnpqrstvwxyz`, drawn from operating-system randomness. That gives 2^30 (about 1.07 billion) IDs per prefix. When a generated ID already exists in `.zban/` or `.zban/archive/`, zban draws again.
 
-The filename is `<id>--<slug>.md`; a plain `<id>.md` is also valid. The slug is the title in lowercase with each run of non-alphanumeric ASCII characters replaced by `-`, trimmed of leading and trailing `-`, and cut to 48 characters. The ID is read from the filename (everything before the first `--`, or before `.md`) and is not repeated in the frontmatter, so it has a single source. The slug is never used for lookup and is not renamed when the title changes. Input IDs are matched case-insensitively.
+The filename is `<id>.md` and nothing else. The ID is read from the filename and is not repeated in the frontmatter, so it has a single source, and an issue's path follows from its ID and status alone. A Markdown file in `.zban/` or `.zban/archive/` whose name is not a valid ID is reported by `zban check`. Input IDs are matched case-insensitively.
 :::
 
 :::mara design DES-ISSUE-FILE

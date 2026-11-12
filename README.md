@@ -23,7 +23,7 @@ that lives next to the code and is versioned with it:
 
 ## What an issue looks like
 
-`.zban/zb-n938cw--parse-issue-files.md`:
+`.zban/zb-n938cw.md`:
 
 ```markdown
 ---
