@@ -880,10 +880,8 @@ mod tests {
     // @mara implements VER-ISSUE-FILES
     #[test]
     fn init_and_create_rename_into_place_without_hard_links() {
-        let dir = std::env::temp_dir().join(format!("zban-store-no-links-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let project = Project::init_linking(&dir, None, link_unsupported).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let project = Project::init_linking(dir.path(), None, link_unsupported).unwrap();
         assert_eq!(entries(&project.dir()), [CONFIG]);
         assert_eq!(
             Project::open(project.root()).unwrap().prefix(),
@@ -942,13 +940,12 @@ mod tests {
         );
         let loaded = project.load().unwrap();
         assert!(loaded.contains(&open) && loaded.contains(&closed));
-        fs::remove_dir_all(project.root()).unwrap();
     }
 
     // @mara implements VER-ISSUE-FILES
     #[test]
     fn init_and_create_fail_with_io_on_any_other_linking_error() {
-        let project = temp_project("link-broken");
+        let (_dir, project) = temp_project();
         let files = project.load().unwrap();
         let error = project
             .create_linking(
@@ -960,16 +957,11 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.code, ErrorCode::Io);
         assert_eq!(entries(&project.dir()), [CONFIG]);
-        fs::remove_dir_all(project.root()).unwrap();
 
-        let dir =
-            std::env::temp_dir().join(format!("zban-store-init-broken-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let error = Project::init_linking(&dir, None, link_broken).unwrap_err();
+        let dir = tempfile::tempdir().unwrap();
+        let error = Project::init_linking(dir.path(), None, link_broken).unwrap_err();
         assert_eq!(error.code, ErrorCode::Io);
         // The empty `.zban/` that stays behind is zb-bjyq1s.
-        assert!(entries(&dir.join(DIR)).is_empty());
-        fs::remove_dir_all(&dir).unwrap();
+        assert!(entries(&dir.path().join(DIR)).is_empty());
     }
 }
