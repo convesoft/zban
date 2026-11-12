@@ -3,7 +3,7 @@
 `zban mcp` serves zban to MCP clients over stdio. It provides the same operations
 as the [command line](cli.mara.md) and tells the client how to use them.
 
-> zban is not implemented yet. This page describes the agreed v1 interface.
+> The handoff parameters of `update_issue` are not implemented yet.
 
 ## Setup
 
@@ -32,6 +32,21 @@ Codex, in `~/.codex/config.toml`:
 command = "zban"
 args = ["mcp"]
 ```
+
+## Tools
+
+The tools mirror the [commands](cli.mara.md): `list_issues`, `show_issues`,
+`create_issue`, `update_issue`, `delete_issue` and `check_issues`. Their
+parameters are the command's options with underscores for hyphens, a list for
+an option that can repeat and `true` for a flag:
+
+| Command line | MCP tool call |
+| --- | --- |
+| `zban list --status todo --status in-progress --ready` | `list_issues {"status": ["todo", "in-progress"], "ready": true}` |
+| `zban update zb-n938cw --add-tag cli --no-parent` | `update_issue {"id": "zb-n938cw", "add_tag": ["cli"], "no_parent": true}` |
+
+Each result is the JSON document that the command prints with `--json`. A
+failure is a tool error carrying the same `{"error": {"code": ..., "message": ...}}`.
 
 ## Choosing the project
 
@@ -81,7 +96,9 @@ in [Using zban with agents](agents.mara.md#setup).
 | `delete_issue` | `delete` |
 | `check_issues` | `check`, with optional `fix` |
 
+The parameters of each tool are the options of its command, named with underscores for hyphens: a repeatable option takes a list and a flag a boolean. The positional arguments become `title`, `id` and `ids`.
+
 Every tool accepts an optional `directory`, an absolute path with the meaning of the CLI's `-C`: the project is searched upward from it. A relative path is rejected. The project is resolved on every call, from the call's `directory`, then the server's `-C`, then the server's working directory.
 
-Each tool result carries the JSON document the CLI prints with `--json`, both as structured content and as text. Failures are tool errors with the same error codes. The server's `instructions` are the agent guide rendered for MCP, in full when a project is found at startup and as the short note otherwise ([[DES-AGENT-GUIDE]]). When no project is found, the server still starts, and every tool without a `directory` fails with `project_not_found`, with a message suggesting `directory`. v1 offers no resources or prompts, and no tool for `init`, which is a one-time human action.
+Each tool result carries the JSON document the CLI prints with `--json`, both as structured content and as text. Failures are tool errors with the same error codes; a check that finds errors is not a failure, because its findings are the result. The server's `instructions` are the agent guide rendered for MCP, in full when a project is found at startup and as the short note otherwise ([[DES-AGENT-GUIDE]]). When no project is found, the server still starts, and every tool without a `directory` fails with `project_not_found`, with a message suggesting `directory`. v1 offers no resources or prompts, and no tool for `init`, which is a one-time human action.
 :::

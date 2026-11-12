@@ -3,8 +3,8 @@
 `zban` is a single binary. Every command prints human-readable output by default
 and one JSON document with `--json`. Run `zban <command> --help` for full options.
 
-> `mcp` and the handoff options are not implemented yet. This page
-> describes the agreed v1 interface.
+> The handoff options are not implemented yet. This page describes the
+> agreed v1 interface.
 
 ## Common tasks
 

@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use zban::operations::{self, CreateRequest, ListRequest, Replacement, UpdateRequest};
-use zban::{Error, ErrorCode, Project, Result};
+use zban::{Error, ErrorCode, Project, Result, Surface};
 
 use output::Reply;
 
@@ -66,6 +66,8 @@ enum Command {
     /// Print the workflow guide for coding agents; outside a project, print
     /// nothing.
     Prime,
+    /// Serve zban to MCP clients over stdio.
+    Mcp,
 }
 
 #[derive(Args)]
@@ -190,6 +192,9 @@ pub fn run() -> ExitCode {
         Err(error) => return output::rejected(&error),
     };
     let directory = cli.directory.as_deref().unwrap_or(Path::new("."));
+    if cli.json && matches!(cli.command, Command::Mcp) {
+        return output::fail(true, &Error::usage("`mcp` takes no --json"));
+    }
     output::finish(cli.json, execute(cli.command, directory))
 }
 
@@ -228,9 +233,13 @@ fn execute(command: Command, directory: &Path) -> Result<Reply> {
             Ok(Reply::new(&checked, text).failed(checked.has_errors()))
         }
         Command::Prime => {
-            let guide = operations::guide(directory)?;
+            let guide = operations::guide(directory, Surface::Cli)?;
             let text = guide.guide.clone().unwrap_or_default();
             Ok(Reply::new(&guide, text))
+        }
+        Command::Mcp => {
+            crate::mcp::serve(directory)?;
+            Ok(Reply::new(&(), String::new()))
         }
     }
 }

@@ -4,7 +4,7 @@
 pub mod check;
 pub mod config;
 pub mod error;
-mod guide;
+pub mod guide;
 pub mod id;
 pub mod issue;
 pub mod lifecycle;
@@ -17,6 +17,7 @@ mod yaml;
 
 pub use check::Finding;
 pub use error::{Error, ErrorCode, Result};
+pub use guide::Surface;
 pub use id::{Id, Prefix};
 pub use issue::{Issue, IssueType, Priority, Problem, ProblemCode, Severity, Status};
 pub use lifecycle::Checklist;

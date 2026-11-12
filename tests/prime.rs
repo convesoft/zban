@@ -1,13 +1,14 @@
-//! `VER-AGENT-GUIDE`: the agent guide that `zban prime` prints, through the
-//! real `zban` binary.
+//! `VER-AGENT-GUIDE`: the agent guide that `zban prime` prints and that
+//! `zban mcp` sends as its instructions, through the real `zban` binary.
 
 mod common;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
+use common::mcp::Client;
 use common::{stderr, stdout, temp_dir, temp_dir_outside_projects, write_files, zban};
 use serde_json::{Value, json};
 use zban::{Id, IssueType, NotReady, Prefix, Priority, Status};
@@ -15,6 +16,10 @@ use zban::{Id, IssueType, NotReady, Prefix, Priority, Status};
 /// The expected output of `zban prime`. Run the tests with
 /// `ZBAN_UPDATE_SNAPSHOTS=1` to rewrite it after an intended change.
 const SNAPSHOT: &str = "tests/snapshots/prime.md";
+
+/// The expected MCP server instructions inside a project, updated the same
+/// way.
+const MCP_SNAPSHOT: &str = "tests/snapshots/mcp.md";
 
 /// Commands the guide leaves out: `init` is a one-time human action, and
 /// `prime` and `mcp` set up agents rather than serve them.
@@ -50,6 +55,139 @@ fn succeeded(output: &Output) -> String {
 /// The guide as `zban prime` prints it inside a new project named `name`.
 fn guide(name: &str) -> String {
     succeeded(&zban(&project(name), &["prime"]))
+}
+
+/// The instructions of an MCP server started in `dir` with `args`.
+fn instructions(dir: &Path, args: &[&str]) -> String {
+    let client = Client::start(dir, args);
+    let instructions = client.instructions().to_owned();
+    assert!(client.finish().success());
+    instructions
+}
+
+/// The guide as the MCP server sends it inside a new project named `name`.
+fn mcp_guide(name: &str) -> String {
+    instructions(&project(&format!("mcp-{name}")), &[])
+}
+
+/// Both renderings of the guide.
+fn guides(name: &str) -> [String; 2] {
+    [guide(name), mcp_guide(name)]
+}
+
+/// The input schema of each tool, by name.
+fn tool_schemas() -> BTreeMap<String, Value> {
+    let mut client = Client::start(&project("mcp-tools"), &[]);
+    client
+        .tools()
+        .into_iter()
+        .map(|tool| {
+            (
+                tool["name"].as_str().unwrap().to_owned(),
+                tool["inputSchema"].clone(),
+            )
+        })
+        .collect()
+}
+
+/// Checks `text` against the snapshot at `path`, after rewriting it when
+/// `ZBAN_UPDATE_SNAPSHOTS` is set.
+fn assert_snapshot(path: &str, text: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+    if std::env::var_os("ZBAN_UPDATE_SNAPSHOTS").is_some() {
+        fs::write(&path, text).unwrap();
+    }
+    let expected = fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        text,
+        expected,
+        "the guide differs from {}; rerun with ZBAN_UPDATE_SNAPSHOTS=1 if intended",
+        path.display()
+    );
+}
+
+/// The JSON type a schema property takes, besides `null`.
+fn schema_type(property: &Value) -> &str {
+    match &property["type"] {
+        Value::String(kind) => kind,
+        Value::Array(kinds) => kinds
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|kind| *kind != "null")
+            .unwrap(),
+        other => panic!("no type: {other}"),
+    }
+}
+
+/// The JSON type of a value in the guide.
+fn value_type(value: &Value) -> &'static str {
+    match value {
+        Value::Array(_) => "array",
+        Value::Bool(_) => "boolean",
+        Value::String(_) => "string",
+        other => panic!("unexpected value {other}"),
+    }
+}
+
+/// The arguments of a tool call in the guide, such as
+/// `{"id": ID, "status": "done"}`, with placeholders made strings.
+fn call_arguments(text: &str) -> serde_json::Map<String, Value> {
+    let mut json = String::new();
+    let (mut in_string, mut escaped, mut placeholder) = (false, false, false);
+    for c in text.chars() {
+        // Quotes open before the first letter of a placeholder and close
+        // after its last.
+        let letter = !in_string && c.is_ascii_uppercase();
+        if letter != placeholder {
+            json.push('"');
+        }
+        placeholder = letter;
+        if in_string {
+            in_string = escaped || c != '"';
+            escaped = !escaped && c == '\\';
+        } else {
+            in_string = c == '"';
+        }
+        json.push(c);
+    }
+    serde_json::from_str(&json).unwrap_or_else(|error| panic!("{text}: {error}"))
+}
+
+/// The parameters of a tool synopsis in the guide, such as
+/// `{id: ID, status?: S, add_tag?: [T], force?: true}`, with whether each is
+/// required and its JSON type.
+fn synopsis_params(text: &str) -> BTreeMap<String, (bool, &'static str)> {
+    let inner = text.strip_prefix('{').unwrap().strip_suffix('}').unwrap();
+    inner
+        .split(", ")
+        .map(|field| {
+            let (name, value) = field.split_once(": ").unwrap();
+            let kind = if value.starts_with('[') {
+                "array"
+            } else if value == "true" {
+                "boolean"
+            } else {
+                "string"
+            };
+            match name.strip_suffix('?') {
+                Some(name) => (name.to_owned(), (false, kind)),
+                None => (name.to_owned(), (true, kind)),
+            }
+        })
+        .collect()
+}
+
+/// The tool references in the MCP guide: each tool with the rest of its code
+/// span, such as `{"id": ID}`.
+fn tool_spans(guide: &str) -> Vec<(String, String)> {
+    code_spans(guide)
+        .into_iter()
+        .filter_map(|span| {
+            let (tool, rest) = span.split_once(' ').unwrap_or((&span, ""));
+            let named = tool.ends_with("_issue") || tool.ends_with("_issues");
+            named.then(|| (tool.to_owned(), rest.to_owned()))
+        })
+        .collect()
 }
 
 /// The text of every code span in `markdown`, with line breaks as spaces.
@@ -188,7 +326,12 @@ fn prime_fails_for_a_missing_directory() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn guide_vocabulary_equals_the_code() {
-    let guide = guide("vocabulary");
+    for guide in guides("vocabulary") {
+        vocabulary_equals_the_code(&guide);
+    }
+}
+
+fn vocabulary_equals_the_code(guide: &str) {
     let words = |words: Vec<String>| {
         words
             .iter()
@@ -290,14 +433,172 @@ fn guide_lists_every_command_agents_use() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn guide_covers_its_sections_within_150_lines() {
-    let guide = guide("sections");
-    let headings: Vec<_> = guide
-        .lines()
-        .filter(|line| line.starts_with("## "))
-        .collect();
-    assert_eq!(headings, SECTIONS);
-    let lines = guide.lines().count();
-    assert!(lines <= 150, "the guide has {lines} lines");
+    for guide in guides("sections") {
+        let headings: Vec<_> = guide
+            .lines()
+            .filter(|line| line.starts_with("## "))
+            .collect();
+        assert_eq!(headings, SECTIONS);
+        let lines = guide.lines().count();
+        assert!(lines <= 150, "the guide has {lines} lines");
+    }
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn mcp_server_sends_the_guide_inside_a_project() {
+    let root = project("mcp-inside");
+    let sent = instructions(&root, &[]);
+    assert_snapshot(MCP_SNAPSHOT, &sent);
+    assert_ne!(sent, guide("mcp-inside-cli"), "rendered for MCP");
+
+    write_files(&root, &[("src/deep/file.txt", "")]);
+    assert_eq!(instructions(&root.join("src/deep"), &[]), sent);
+    let outside = temp_dir_outside_projects("mcp-guide-directed");
+    assert_eq!(
+        instructions(&outside, &["-C", root.to_str().unwrap()]),
+        sent
+    );
+
+    let invalid = temp_dir("prime-mcp-invalid-config");
+    write_files(&invalid, &[(".zban/config.toml", "format_version = 99\n")]);
+    assert_eq!(instructions(&invalid, &[]), sent);
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn mcp_server_sends_a_short_note_outside_a_project() {
+    let outside = temp_dir_outside_projects("mcp-guide-outside");
+    let note = instructions(&outside, &[]);
+    assert!(note.contains("`directory`"), "{note}");
+    assert!(note.contains("`zban prime -C <dir>`"), "{note}");
+    assert!(note.contains(".zban/"), "{note}");
+    assert!(note.lines().count() <= 6, "{note}");
+    assert!(!note.contains("## "), "{note}");
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn guide_names_only_tools_and_parameters_that_exist() {
+    let schemas = tool_schemas();
+    let (mut calls, mut params_checked) = (0, 0);
+    for (tool, rest) in tool_spans(&mcp_guide("tool-names")) {
+        let schema = schemas
+            .get(&tool)
+            .unwrap_or_else(|| panic!("`{tool}` is not a tool; zban has {:?}", schemas.keys()));
+        let properties = &schema["properties"];
+        let named: Vec<(String, &str)> = if rest.starts_with("{\"") {
+            calls += 1;
+            call_arguments(&rest)
+                .iter()
+                .map(|(name, value)| (name.clone(), value_type(value)))
+                .collect()
+        } else if rest.starts_with('{') {
+            synopsis_params(&rest)
+                .into_iter()
+                .map(|(name, (_, kind))| (name, kind))
+                .collect()
+        } else {
+            assert_eq!(rest, "", "`{tool} {rest}`");
+            Vec::new()
+        };
+        for (name, kind) in named {
+            let property = properties.get(&name).unwrap_or_else(|| {
+                panic!("`{tool} {rest}` names `{name}`, which it does not take")
+            });
+            assert_eq!(schema_type(property), kind, "`{tool} {rest}`: `{name}`");
+            params_checked += 1;
+        }
+    }
+    assert!(calls >= 10, "only {calls} calls found");
+    assert!(
+        params_checked >= 60,
+        "only {params_checked} parameters found"
+    );
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn guide_lists_every_tool_with_all_its_parameters() {
+    let guide = mcp_guide("tool-reference");
+    let reference = guide.split("\n## Reference\n").nth(1).unwrap();
+    let schemas = tool_schemas();
+    for (tool, schema) in &schemas {
+        let prefix = format!("\n- `{tool} {{");
+        let at = reference
+            .find(&prefix)
+            .unwrap_or_else(|| panic!("the reference lists no `{tool}`"));
+        let line = &reference[at + prefix.len() - 1..];
+        let synopsis = &line[..line.find('`').unwrap()];
+        let listed = synopsis_params(synopsis);
+
+        let required: BTreeSet<&str> = schema["required"]
+            .as_array()
+            .map(|names| names.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let expected: BTreeMap<String, (bool, &str)> = schema["properties"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter(|(name, _)| *name != "directory")
+            .map(|(name, property)| {
+                let kind = schema_type(property);
+                (name.clone(), (required.contains(name.as_str()), kind))
+            })
+            .collect();
+        assert_eq!(listed, expected, "`{tool}`");
+    }
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn guide_lists_every_option_of_each_command() {
+    let guide = guide("option-reference");
+    let reference = guide.split("\n## Reference\n").nth(1).unwrap();
+    for command in commands() {
+        if SETUP_COMMANDS.contains(&command.as_str()) {
+            continue;
+        }
+        let prefix = format!("\n- `zban {command}");
+        let at = reference
+            .find(&prefix)
+            .unwrap_or_else(|| panic!("the reference lists no `zban {command}`"));
+        let line = &reference[at + 4..];
+        let synopsis = &line[..line.find('`').unwrap()];
+        let listed: BTreeSet<String> = options(synopsis).into_iter().map(|(o, _)| o).collect();
+
+        let help = succeeded(&zban(Path::new("."), &[&command, "--help"]));
+        let offered: BTreeSet<String> = help
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with('-'))
+            .filter_map(|line| line.split([' ', ',']).find(|word| word.starts_with("--")))
+            .filter(|option| !["--help", "--json", "--directory"].contains(option))
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(listed, offered, "`zban {command}`");
+
+        // Positional arguments, such as `<ID>...` in `Usage: zban show [OPTIONS] <ID>...`.
+        let usage = help
+            .lines()
+            .find(|line| line.starts_with("Usage: "))
+            .unwrap();
+        let arguments: Vec<String> = usage
+            .split_whitespace()
+            .filter(|word| word.starts_with('<'))
+            .map(|word| word.replace(['<', '>'], ""))
+            .collect();
+        let mut depth = 0;
+        let mut positional = Vec::new();
+        for word in synopsis.split_whitespace().skip(2) {
+            if depth == 0 && !word.starts_with('[') {
+                positional.push(word.to_owned());
+            }
+            depth += word.matches('[').count();
+            depth -= word.matches(']').count();
+        }
+        assert_eq!(positional, arguments, "`zban {command}`");
+    }
 }
 
 /// For `VAL-DOGFOOD`: this repository's `AGENTS.md` loads the guide with the
