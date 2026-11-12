@@ -119,10 +119,19 @@ zban is written in Rust. The specification is maintained with
 [Mara](https://github.com/convesoft/mara); see [`.mara/README.md`](.mara/README.md)
 for setup. Contributors and coding agents start with [AGENTS.md](AGENTS.md).
 
+[`rust-toolchain.toml`](rust-toolchain.toml) pins the exact Rust version that
+CI and the release builds use, and `rustup toolchain install` in the checkout
+installs it. The pin moves only in a pull request of its own. Mara's code links
+need the `rust-analyzer` component of that toolchain, so run
+`rustup component add rust-analyzer` again after the pin changes. The checks
+include a test run with the oldest supported Rust, the `rust-version` in
+`Cargo.toml`, which CI runs too:
+
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test
+cargo +1.89 test --locked   # the rust-version in Cargo.toml
 mara schema validate && mara project validate
 ```
 

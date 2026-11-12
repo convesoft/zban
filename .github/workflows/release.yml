@@ -1,6 +1,7 @@
 # Tests zban and builds the release binaries of ADR-RUST-BINARY. A pushed `v*`
 # tag on a commit of `main` also creates the GitHub release; pull requests that
-# change this workflow or the dependencies, and manual runs, only test and build.
+# change this workflow, the toolchain or the dependencies, and manual runs, only
+# test and build.
 name: Release
 
 on:
@@ -9,6 +10,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - rust-toolchain.toml
       - Cargo.toml
       - Cargo.lock
       - about.toml
@@ -50,9 +52,9 @@ jobs:
         with:
           # Full history, so that a tag run can check that its commit is on main.
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ join(matrix.targets, ',') }}
+      # Installs the toolchain that rust-toolchain.toml pins, with all four
+      # release targets (ADR-RUST-BINARY).
+      - run: rustup toolchain install
       - name: Check that the tag names the package version
         if: startsWith(github.ref, 'refs/tags/')
         run: |

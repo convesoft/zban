@@ -1,0 +1,12 @@
+# The Rust version that CI and the release workflow build with
+# (ADR-RUST-BINARY). Bump it deliberately, in a pull request of its own.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
