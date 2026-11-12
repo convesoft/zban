@@ -285,7 +285,7 @@ format_version = 1   # format of the .zban/ directory; zban refuses formats it d
 prefix = "zb"        # ID prefix: 1-8 lowercase ASCII letters or digits, starting with a letter
 ```
 
-Unknown configuration keys are errors. `zban init` creates the directory and the configuration. The prefix is `zb` unless `--prefix` gives another one; a value that breaks the prefix rule above is rejected. zban finds the project by walking up from the working directory to the nearest `.zban/config.toml`, as far as the filesystem root. The global `-C, --directory DIR` option makes zban behave as if started in `DIR`: the search starts there, and `init` creates `.zban/` there.
+Unknown configuration keys are errors. `zban init` creates the directory and the configuration. When a step after creating the directory fails, such as writing the configuration, `init` removes the directory again if it is still empty, so that `init` can be run again; a `.zban/` that already existed fails with `project_exists` and is left alone. The prefix is `zb` unless `--prefix` gives another one; a value that breaks the prefix rule above is rejected. zban finds the project by walking up from the working directory to the nearest `.zban/config.toml`, as far as the filesystem root. The global `-C, --directory DIR` option makes zban behave as if started in `DIR`: the search starts there, and `init` creates `.zban/` there.
 
 `init` works inside an existing project too and creates a nested project there. Commands run at or below the nested root then find the nested project and no longer see the enclosing one, so `init` names the enclosing project: the nearest directory above the new root that holds `.zban/config.toml` ([[DES-CLI]]).
 
