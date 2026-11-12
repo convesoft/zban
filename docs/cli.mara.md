@@ -3,7 +3,8 @@
 `zban` is a single binary. Every command prints human-readable output by default
 and one JSON document with `--json`. Run `zban <command> --help` for full options.
 
-> zban is not implemented yet. This page describes the agreed v1 interface.
+> zban is not fully implemented yet: only `zban init` works so far, without `--json`.
+> This page describes the agreed v1 interface.
 
 ## Common tasks
 
