@@ -74,10 +74,10 @@ jobs:
           for target in $TARGETS; do
             cargo build --release --locked --target "$target"
           done
-      # Runs the test suite on the commit being released, for the runner's own
-      # target.
+      # Runs the test suite on the commit being released, for the target the
+      # runner runs natively: the first of its entry.
       - name: Test
-        run: cargo test --locked
+        run: cargo test --locked --target ${{ matrix.targets[0] }}
       # Runs the main commands in a scratch project outside the checkout, so
       # that zban cannot find this repository's own `.zban/`. The Apple silicon
       # runner runs the x86_64 binary under Rosetta 2, which the image has. If
