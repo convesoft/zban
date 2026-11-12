@@ -175,7 +175,7 @@ When zban rewrites an issue, the body bytes stay unchanged unless the operation 
 :status: accepted
 :satisfies: NEED-INTEGRITY
 
-When an issue file changes between zban reading it and replacing it, for example through another zban process, an editor or a branch switch, zban does not replace it and the operation fails with the error code `conflict`. Of several zban processes that change one issue at the same time, each either writes its change without dropping another's or fails with `conflict`. Creating an issue never replaces an existing file.
+When an issue file changes between zban reading it and replacing it, for example through another zban process, an editor or a branch switch, zban does not replace it and the operation fails with the error code `conflict`. Of several zban processes that change one issue at the same time, each either writes its change without dropping another's or fails with `conflict`. Creating an issue never replaces an existing file. On a file system without hard links, this holds against other zban processes, but not against another program that creates a file under the new issue's name at the same moment.
 :::
 
 :::mara requirement REQ-DAMAGED-DATA
