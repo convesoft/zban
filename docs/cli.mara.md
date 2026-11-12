@@ -130,7 +130,7 @@ Exit status is 0 on success, 1 when an operation fails or `check` finds errors, 
 | `referenced` | Deleting an issue that another issue references |
 | `text_not_found` | A replacement's old text does not occur in the body |
 | `text_ambiguous` | A replacement's old text occurs more than once |
-| `invalid_handoff` | Handoff text contains a level 1 or 2 heading or leaves a fenced code block open, or the body has several handoff sections ([[DES-HANDOFF]]) |
+| `invalid_handoff` | Handoff text contains a level 1 or 2 heading or leaves a fenced code block open, the written note would not read back, or the body has several handoff sections ([[DES-HANDOFF]]) |
 | `conflict` | The file changed between reading and writing ([[REQ-NO-LOST-UPDATES]]) |
 | `io` | Any other file-system failure |
 
