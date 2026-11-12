@@ -53,39 +53,96 @@ fn lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
     })
 }
 
-/// Fenced code blocks, followed line by line.
+/// Fenced code blocks, followed line by line (`DES-LIFECYCLE`).
 ///
-/// A fence is a line of at least three backticks or tildes, at any
-/// indentation, so fences inside list items count too. A backtick fence's
-/// info string cannot contain a backtick. The block ends at a line of at
-/// least as many of the same character with nothing else after it, or at
-/// the end of the text. The fence lines belong to the block.
+/// A fence line is indented by at most three columns more than its margin:
+/// the content column of the innermost list item holding it, or column 0.
+/// The fence lines belong to the block. A block ends at a closing fence
+/// line or at the end of the text. Lines inside a block neither start nor
+/// end list items, and list items end at the first line that is neither
+/// blank nor indented to their content, lazy continuation lines included.
+// @mara implements DES-LIFECYCLE
+// @mara implements DES-HANDOFF
 #[derive(Default)]
 struct Fences {
-    /// The character and length of the open fence.
-    open: Option<(u8, usize)>,
+    /// The content columns of the list items holding the current line,
+    /// innermost last, so in increasing order.
+    items: Vec<usize>,
+    /// The character, the length and the margin of the open fence.
+    open: Option<(u8, usize, usize)>,
 }
 
 impl Fences {
     /// Whether `line`, the next line, belongs to a fenced code block.
     fn fenced(&mut self, line: &str) -> bool {
-        match self.open {
-            None => {
-                self.open = fence(line).map(|(marker, len, _)| (marker, len));
-                self.open.is_some()
+        let (mut column, mut text) = indented(0, line);
+        if let Some((marker, len, margin)) = self.open {
+            if column <= margin + 3
+                && let Some((closing, closing_len, info)) = fence(text)
+                && closing == marker
+                && closing_len >= len
+                && info.trim().is_empty()
+            {
+                self.open = None;
             }
-            Some((marker, len)) => {
-                if let Some((closing, closing_len, info)) = fence(line)
-                    && closing == marker
-                    && closing_len >= len
-                    && info.trim().is_empty()
-                {
-                    self.open = None;
-                }
-                true
+            return true;
+        }
+        if text.is_empty() {
+            return false;
+        }
+        self.items.retain(|&content| content <= column);
+        loop {
+            let margin = self.items.last().copied().unwrap_or(0);
+            if column > margin + 3 {
+                return false;
             }
+            if let Some((marker, len, _)) = fence(text) {
+                self.open = Some((marker, len, margin));
+                return true;
+            }
+            let Some((width, rest)) = list_marker(text) else {
+                return false;
+            };
+            let after_marker = column + width;
+            (column, text) = indented(after_marker, rest);
+            let gap = column - after_marker;
+            let content = if text.is_empty() || gap > 4 {
+                after_marker + 1
+            } else {
+                column
+            };
+            self.items.push(content);
         }
     }
+}
+
+/// The column that `text`, starting at `column`, reaches after its leading
+/// spaces and tabs, with a tab advancing to the next multiple of four, and
+/// the text after them.
+fn indented(mut column: usize, text: &str) -> (usize, &str) {
+    let rest = text.trim_start_matches([' ', '\t']);
+    for byte in text[..text.len() - rest.len()].bytes() {
+        column = if byte == b'\t' {
+            column / 4 * 4 + 4
+        } else {
+            column + 1
+        };
+    }
+    (column, rest)
+}
+
+/// The width of the list item marker that `text` starts with, and the text
+/// after it: `-`, `*`, `+`, or one to nine digits and `.` or `)`, followed
+/// by a space, a tab or the end of the line.
+fn list_marker(text: &str) -> Option<(usize, &str)> {
+    let digits = text.bytes().take_while(u8::is_ascii_digit).count();
+    let width = match text.as_bytes().get(digits)? {
+        b'-' | b'*' | b'+' if digits == 0 => 1,
+        b'.' | b')' if (1..=9).contains(&digits) => digits + 1,
+        _ => return None,
+    };
+    let rest = &text[width..];
+    (rest.is_empty() || rest.starts_with([' ', '\t'])).then_some((width, rest))
 }
 
 /// The level and the text of an ATX heading such as `## Handoff`: one to
@@ -104,9 +161,9 @@ pub(crate) fn heading(line: &str) -> Option<(usize, &str)> {
 }
 
 /// The fence character, the fence length and the text after the fence, when
-/// `line` is a code fence.
-fn fence(line: &str) -> Option<(u8, usize, &str)> {
-    let text = line.trim_start_matches([' ', '\t']);
+/// `text`, without its indentation, is a code fence: at least three
+/// backticks or tildes, and no backtick after a backtick fence.
+fn fence(text: &str) -> Option<(u8, usize, &str)> {
     let marker = *text.as_bytes().first()?;
     if marker != b'`' && marker != b'~' {
         return None;
@@ -150,9 +207,95 @@ mod tests {
     }
 
     #[test]
-    fn indented_fences_and_line_endings() {
-        let body = "- item\r\n  ```sh\r\n  - [ ] in\r\n  ```\r\nout\r\n\t~~~\n";
+    fn fences_in_list_items_and_line_endings() {
+        let body = "- item\r\n  ```sh\r\n  - [ ] in\r\n  ```\r\nout\r\n";
         assert_eq!(outside(body), ["- item", "out"]);
+    }
+
+    #[test]
+    fn fences_indented_by_up_to_three_columns_open_blocks() {
+        for indent in ["", " ", "  ", "   "] {
+            let body = format!("a\n{indent}```\nin\n{indent}```\nb\n");
+            assert_eq!(outside(&body), ["a", "b"], "{indent:?}");
+        }
+    }
+
+    #[test]
+    fn fences_indented_by_four_columns_outside_list_items_open_nothing() {
+        for indent in ["    ", "\t", "  \t", "      "] {
+            let body = format!("Prose\n{indent}```\n- [ ] after\n");
+            assert_eq!(
+                outside(&body),
+                ["Prose", &format!("{indent}```"), "- [ ] after"]
+            );
+        }
+    }
+
+    #[test]
+    fn fences_follow_the_content_of_their_list_item() {
+        for (body, expected) in [
+            // Nested items: the fence is indented to the inner content.
+            (
+                "- a\n  - b\n    ```\n    in\n    ```\nout\n",
+                &["- a", "  - b", "out"][..],
+            ),
+            (
+                "1. a\n   - b\n     ~~~\n     in\n     ~~~\n",
+                &["1. a", "   - b"],
+            ),
+            ("10. a\n    ```\n    in\n    ```\n", &["10. a"]),
+            (
+                "- a\n\n  - b\n\n       ```\n       in\n       ```\n",
+                &["- a", "", "  - b", ""],
+            ),
+            // Up to three columns past the content, in an item that a tab
+            // or extra spaces after the marker indent further.
+            ("-\ta\n\t   ```\n\tin\n\t```\n", &["-\ta"]),
+            ("-   a\n       ```\n    ```\n", &["-   a"]),
+            // A fence or a nested item right after the marker.
+            ("- ```\n  - [ ] in\n  ```\nout\n", &["out"]),
+            ("- 1. ```\n     in\n     ```\nout\n", &["out"]),
+            // Four columns past the content open nothing.
+            (
+                "- a\n      ```\n- [ ] b\n",
+                &["- a", "      ```", "- [ ] b"],
+            ),
+            ("-      ```\n- [ ] b\n", &["-      ```", "- [ ] b"]),
+            // A line indented less than the content ends the item.
+            (
+                "- a\n\nb\n    ```\n- [ ] c\n",
+                &["- a", "", "b", "    ```", "- [ ] c"],
+            ),
+            (
+                "- a\n  - b\n  c\n      ```\n",
+                &["- a", "  - b", "  c", "      ```"],
+            ),
+            // Indented too far, a marker starts no item.
+            ("a\n    - b\n      ```\n", &["a", "    - b", "      ```"]),
+            // Not list item markers.
+            ("-a\n  ```\n", &["-a"]),
+            ("1234567890. a\n    ```\n", &["1234567890. a", "    ```"]),
+            ("2026-11-12\n    ```\n", &["2026-11-12", "    ```"]),
+        ] {
+            assert_eq!(outside(body), expected, "{body:?}");
+        }
+    }
+
+    #[test]
+    fn closing_fences_keep_the_margin_of_the_opening_one() {
+        for (body, expected) in [
+            // Inside a block, lines start and end no list items.
+            ("- a\n  ```\nb\n  ```\n     ```\nin\n", &["- a"][..]),
+            ("```\n- a\n```\n     ```\nout\n", &["     ```", "out"]),
+            // A closing fence may be indented less than the opening one.
+            (
+                "- a\n  - b\n    ```\n    in\n```\nout\n",
+                &["- a", "  - b", "out"],
+            ),
+            ("```\n    ```\nin\n   ```\nout\n", &["out"]),
+        ] {
+            assert_eq!(outside(body), expected, "{body:?}");
+        }
     }
 
     #[test]
