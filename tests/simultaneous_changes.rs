@@ -12,7 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use common::{stdout, temp_dir, zban};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// Processes that update the issue at the same time.
 const WORKERS: usize = 8;
@@ -26,10 +26,16 @@ const MAX_ATTEMPTS: usize = 1000;
 const LOCK_WAIT: Duration = Duration::from_millis(500);
 /// How long a read may take while another process holds the lock shared.
 const READ_LIMIT: Duration = Duration::from_secs(10);
-/// Processes that read the project while its issue is replaced.
+/// Threads that each keep reading the project while its issue changes.
 const READERS: usize = 8;
-/// `zban show` and `zban list` runs each reader makes.
+/// `zban show` and `zban list --all` runs each reader makes while the issue
+/// is replaced.
 const READS: usize = 50;
+/// `zban show` and `zban list --all` runs each reader makes while the issue
+/// is closed and reopened. A move only rarely falls between a read's listing
+/// and its reading of the files, so it takes more runs to show that none
+/// misses the issue.
+const MOVE_READS: usize = 500;
 
 /// Runs `zban --json` in `dir` and returns its document, or the error code
 /// when it fails.
@@ -201,6 +207,75 @@ fn reads_wait_for_a_write_but_not_for_another_read() {
     }
 }
 
+/// Renames `from` to `to` while holding the lock on `.zban/` in `root`, as a
+/// zban write does.
+fn rename_locked(root: &Path, from: &Path, to: &Path) {
+    let lock = File::open(root.join(".zban")).unwrap();
+    lock.lock().unwrap();
+    fs::rename(from, to).unwrap();
+}
+
+/// Writes `bytes` to a temporary file in `dir`, as a zban write does before
+/// it takes the lock, and returns its path.
+fn staged(dir: &Path, bytes: &[u8]) -> PathBuf {
+    let path = dir.join(".zban-test.tmp");
+    fs::write(&path, bytes).unwrap();
+    path
+}
+
+/// Runs [`READERS`] threads that each run `zban show id` and
+/// `zban list --all` `reads` times in `root` while another thread runs
+/// `change` again and again. Every read must find issue `id`, which is the
+/// only issue, and warn about no file. Returns how often `change` ran.
+fn assert_reads_find_issue(
+    root: &Path,
+    id: &str,
+    reads: usize,
+    mut change: impl FnMut() + Send,
+) -> usize {
+    let reading = AtomicBool::new(true);
+    let (reads, changes) = thread::scope(|scope| {
+        let changer = scope.spawn(|| {
+            let mut changes = 0_usize;
+            while reading.load(Ordering::Relaxed) {
+                change();
+                changes += 1;
+            }
+            changes
+        });
+        let readers: Vec<_> = (0..READERS)
+            .map(|_| {
+                scope.spawn(|| {
+                    for _ in 0..reads {
+                        let shown = run(root, &["show", id]);
+                        let shown = shown.unwrap_or_else(|code| panic!("show {id}: {code}"));
+                        assert_eq!(shown["warnings"], json!([]), "show {id}");
+                        let listed = run(root, &["list", "--all"]).unwrap();
+                        let ids: Vec<_> = listed["issues"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|issue| issue["id"].as_str().unwrap())
+                            .collect();
+                        assert_eq!(ids, [id], "list --all");
+                        assert_eq!(listed["warnings"], json!([]), "list --all");
+                    }
+                })
+            })
+            .collect();
+        let reads: Vec<_> = readers.into_iter().map(|reader| reader.join()).collect();
+        // Stop the changes before a failed reader ends the test.
+        reading.store(false, Ordering::Relaxed);
+        (reads, changer.join().unwrap())
+    });
+    for read in reads {
+        if let Err(panic) = read {
+            std::panic::resume_unwind(panic);
+        }
+    }
+    changes
+}
+
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn reads_see_an_issue_that_another_process_replaces() {
@@ -208,51 +283,36 @@ fn reads_see_an_issue_that_another_process_replaces() {
     let dir = root.join(".zban");
     let path = dir.join(format!("{id}.md"));
     let bytes = fs::read(&path).unwrap();
-    let reading = AtomicBool::new(true);
-
-    let (reads, replacements) = thread::scope(|scope| {
-        // Renames a copy of the issue over it, again and again, under the
-        // lock on `.zban/` as a zban write does.
-        let replacer = scope.spawn(|| {
-            let staged = dir.join(".zban-replacement.tmp");
-            let mut replacements = 0_usize;
-            while reading.load(Ordering::Relaxed) {
-                fs::write(&staged, &bytes).unwrap();
-                let lock = File::open(&dir).unwrap();
-                lock.lock().unwrap();
-                fs::rename(&staged, &path).unwrap();
-                drop(lock);
-                replacements += 1;
-            }
-            replacements
-        });
-        let readers: Vec<_> = (0..READERS)
-            .map(|_| {
-                scope.spawn(|| {
-                    for _ in 0..READS {
-                        let shown = run(&root, &["show", &id]);
-                        assert!(shown.is_ok(), "show {id}: {shown:?}");
-                        let listed = run(&root, &["list"]).unwrap();
-                        let ids: Vec<_> = listed["issues"]
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .map(|issue| issue["id"].as_str().unwrap())
-                            .collect();
-                        assert_eq!(ids, [id.as_str()], "list");
-                    }
-                })
-            })
-            .collect();
-        let reads: Vec<_> = readers.into_iter().map(|reader| reader.join()).collect();
-        // Stop the replacer before a failed reader ends the test.
-        reading.store(false, Ordering::Relaxed);
-        (reads, replacer.join().unwrap())
+    // Renames a copy of the issue over it.
+    let replacements = assert_reads_find_issue(&root, &id, READS, || {
+        rename_locked(&root, &staged(&dir, &bytes), &path)
     });
-    for read in reads {
-        if let Err(panic) = read {
-            std::panic::resume_unwind(panic);
-        }
-    }
     assert!(replacements > 0);
+}
+
+// @mara implements VER-ISSUE-FILES
+#[test]
+fn reads_see_an_issue_that_another_process_closes_and_reopens() {
+    let (root, id) = project_with("read-while-moved", &["Moved"]);
+    let name = format!("{id}.md");
+    let (open_dir, closed_dir) = (root.join(".zban"), root.join(".zban/archive"));
+    let open = fs::read(open_dir.join(&name)).unwrap();
+    run(&root, &["update", &id, "--status", "done"]).unwrap();
+    let closed = fs::read(closed_dir.join(&name)).unwrap();
+    run(&root, &["update", &id, "--status", "todo"]).unwrap();
+    // Closes and then reopens the issue as `zban update` does: rewrites the
+    // file in place, then moves it into the other directory, each step under
+    // the lock.
+    let steps = [
+        (&open_dir, &closed, &closed_dir),
+        (&closed_dir, &open, &open_dir),
+    ];
+    let cycles = assert_reads_find_issue(&root, &id, MOVE_READS, || {
+        for (from, bytes, to) in steps {
+            let path = from.join(&name);
+            rename_locked(&root, &staged(from, bytes), &path);
+            rename_locked(&root, &path, &to.join(&name));
+        }
+    });
+    assert!(cycles > 0);
 }

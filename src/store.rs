@@ -4,9 +4,10 @@
 //! renamed or linked into place, so an interrupted write never leaves a
 //! partial issue file (`REQ-PRESERVE-CONTENT`). Replacing a file first checks
 //! that it still holds the bytes that were read (`REQ-NO-LOST-UPDATES`), under
-//! a lock on `.zban/` that lasts until the file is replaced. Listing the
-//! directories holds the same lock, shared, so that it never overlaps a
-//! rename (`ADR-WRITE-LOCK`).
+//! a lock on `.zban/` that lasts until the file is replaced. Reading the
+//! project holds the same lock, shared, from listing the directories until
+//! the listed files have been read, so that it never overlaps a rename
+//! (`ADR-WRITE-LOCK`).
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write as _};
@@ -167,26 +168,43 @@ impl Project {
     /// Reads every issue file. A file that cannot be read or parsed is
     /// returned with its problems instead of failing the load
     /// (`REQ-DAMAGED-DATA`). Files are ordered by path.
+    ///
+    /// The directories are listed and the files read under one shared lock
+    /// on `.zban/`, so that no zban process replaces, moves or deletes a file
+    /// in between: a file that a close or reopen moves into the other
+    /// directory after the listing would be missed. The files are parsed
+    /// after the lock is released.
     pub fn load(&self) -> Result<Vec<IssueFile>> {
-        let mut files = Vec::new();
-        for (path, archived) in self.entries()? {
-            if is_issue_file(&path) {
-                files.push(self.read(path, archived));
+        let read = self.shared(|| {
+            let mut read = Vec::new();
+            for (path, archived) in self.entries()? {
+                if is_issue_file(&path) {
+                    let bytes = fs::read(&path);
+                    read.push((path, archived, bytes));
+                }
             }
-        }
+            Ok(read)
+        })?;
+        let mut files: Vec<_> = read
+            .into_iter()
+            .map(|(path, archived, bytes)| self.parse(path, archived, bytes))
+            .collect();
         files.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(files)
     }
 
     /// The temporary files that interrupted writes left in `.zban/` or
-    /// `.zban/archive/`, ordered by path (`DES-CHECK`).
+    /// `.zban/archive/`, ordered by path (`DES-CHECK`). They are listed
+    /// under a shared lock on `.zban/`, as [`Project::load`] does.
     pub(crate) fn temporary_files(&self) -> Result<Vec<PathBuf>> {
-        let mut paths: Vec<_> = self
-            .entries()?
-            .into_iter()
-            .map(|(path, _)| path)
-            .filter(|path| is_temporary_file(path))
-            .collect();
+        let mut paths = self.shared(|| {
+            Ok(self
+                .entries()?
+                .into_iter()
+                .map(|(path, _)| path)
+                .filter(|path| is_temporary_file(path))
+                .collect::<Vec<_>>())
+        })?;
         paths.sort();
         Ok(paths)
     }
@@ -194,30 +212,28 @@ impl Project {
     /// Every entry directly inside `.zban/` and `.zban/archive/`, with
     /// whether it is in the archive. A missing archive has no entries.
     ///
-    /// Both listings are taken under a shared lock on `.zban/`, because a
-    /// listing that overlaps a rename over one of its entries can leave that
-    /// entry out, as on btrfs. Reading the files listed needs no lock: each
-    /// path names either the old or the new file of a rename.
+    /// Callers hold a shared lock on `.zban/`, because a listing that
+    /// overlaps a rename over one of its entries can leave that entry out,
+    /// as on btrfs.
     fn entries(&self) -> Result<Vec<(PathBuf, bool)>> {
-        self.shared(|| {
-            let mut paths = Vec::new();
-            for (dir, archived) in [(self.dir(), false), (self.archive_dir(), true)] {
-                let entries = match fs::read_dir(&dir) {
-                    Ok(entries) => entries,
-                    Err(error) if archived && error.kind() == io::ErrorKind::NotFound => continue,
-                    Err(error) => return Err(Error::io(&dir, &error)),
-                };
-                for entry in entries {
-                    let path = entry.map_err(|error| Error::io(&dir, &error))?.path();
-                    paths.push((path, archived));
-                }
+        let mut paths = Vec::new();
+        for (dir, archived) in [(self.dir(), false), (self.archive_dir(), true)] {
+            let entries = match fs::read_dir(&dir) {
+                Ok(entries) => entries,
+                Err(error) if archived && error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(Error::io(&dir, &error)),
+            };
+            for entry in entries {
+                let path = entry.map_err(|error| Error::io(&dir, &error))?.path();
+                paths.push((path, archived));
             }
-            Ok(paths)
-        })
+        }
+        Ok(paths)
     }
 
-    fn read(&self, path: PathBuf, archived: bool) -> IssueFile {
-        match fs::read(&path) {
+    /// The issue file at `path`, from `read`, the result of reading it.
+    fn parse(&self, path: PathBuf, archived: bool, read: io::Result<Vec<u8>>) -> IssueFile {
+        match read {
             Ok(bytes) => self.file(path, archived, bytes),
             Err(error) => {
                 let id = self.filename_id(&path);
@@ -434,19 +450,19 @@ impl Project {
 
     /// Runs `write` while holding an exclusive advisory lock on `.zban/`, so
     /// that no other zban process replaces, moves or deletes an issue file
-    /// between the checks in `write` and its change, or lists the
-    /// directories meanwhile (`ADR-WRITE-LOCK`).
+    /// between the checks in `write` and its change, or reads the project
+    /// meanwhile (`ADR-WRITE-LOCK`).
     // @mara implements DES-SHARED-CORE
     fn locked<T>(&self, write: impl FnOnce() -> Result<T>) -> Result<T> {
         self.with_lock(File::lock, write)
     }
 
-    /// Runs `list` while holding a shared advisory lock on `.zban/`, so that
+    /// Runs `read` while holding a shared advisory lock on `.zban/`, so that
     /// no zban process replaces, moves or deletes an issue file meanwhile
-    /// (`ADR-WRITE-LOCK`). Other listings can hold it at the same time.
+    /// (`ADR-WRITE-LOCK`). Other reads can hold it at the same time.
     // @mara implements DES-SHARED-CORE
-    fn shared<T>(&self, list: impl FnOnce() -> Result<T>) -> Result<T> {
-        self.with_lock(File::lock_shared, list)
+    fn shared<T>(&self, read: impl FnOnce() -> Result<T>) -> Result<T> {
+        self.with_lock(File::lock_shared, read)
     }
 
     /// Runs `step` while holding the lock that `lock` takes on a new handle
@@ -520,7 +536,7 @@ fn conflict(file: &IssueFile, what: &str) -> Error {
     )
 }
 
-/// Whether a write or listing goes ahead without the lock after taking it
+/// Whether a write or read goes ahead without the lock after taking it
 /// failed with `error`: only when the file system has no advisory locks,
 /// which leaves the byte comparison as the only guard of a write
 /// (`ADR-WRITE-LOCK`). Any other failure fails the step.
