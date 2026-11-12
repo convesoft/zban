@@ -53,10 +53,10 @@ Coding agents find what to work on, record progress and outcomes, and file follo
 
 :::mara goal GOAL-SMALL-TOOL
 :mid: 01M764FJ3Z3P69KAH9C5ZFPZWD
-:title: Stay small and predictable
+:title: Stay understandable and predictable
 :status: accepted
 
-zban stays a tool one person can understand completely: a fixed data model, a short command set, and a file format that is readable without zban. New capability is added only for a demonstrated need, not because a neighbouring tool has it.
+One person can understand the whole of zban, and an agent can predict what each operation does from the agent guide alone. This comes from a fixed data model, a short command set, a file format readable without zban, and no hidden state or background activity. Every added capability spends some of this, so it is added only for a demonstrated need.
 :::
 
 ## Needs

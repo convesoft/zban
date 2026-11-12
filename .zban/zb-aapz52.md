@@ -18,3 +18,4 @@ Distribution and licensing follow `ADR-RUST-BINARY`.
 - [ ] Release workflow builds binaries and attaches them to a GitHub release
 - [ ] Publish to crates.io
 - [ ] README installation instructions match the release
+- [ ] `VAL-SCOPE-REVIEW` is done and its shortfalls are filed

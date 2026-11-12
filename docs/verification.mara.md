@@ -107,7 +107,7 @@ A real MCP client talks to `zban mcp` over stdio and runs a create, block, ready
 Snapshot tests cover `zban prime` and the MCP server instructions, both rendered from the same template. The vocabulary lists in the guide equal the enumerations in the code, and every command or tool the guide names exists. `zban prime` outside a project prints nothing and exits 0, and `zban prime -C <project>` from there prints the full guide. A server started inside a project sends the full guide; one started outside sends the short note, which names `directory` and `zban prime -C`. Inspection confirms the guide covers the sections in [[DES-AGENT-GUIDE]] and stays under about 150 lines.
 :::
 
-## Outcome check
+## Outcome checks
 
 :::mara validation VAL-DOGFOOD
 :mid: 01M764FJ3ZND8RM7NMZNT08MP6
@@ -120,4 +120,14 @@ Snapshot tests cover `zban prime` and the MCP server instructions, both rendered
 :exercises: SCN-PARALLEL-BRANCHES
 
 After the CLI works, zban's own backlog is managed only through zban. Over at least ten issues worked on by agents, including some in parallel worktrees, review the history. Agents found ready work and kept checklists and summaries without prompting beyond the guide. Discovered work was filed as issues. No issue needed a manual frontmatter repair other than merge conflicts. `zban check` stayed clean on `main`. Record shortfalls as issues or as changes to this knowledge.
+:::
+
+:::mara validation VAL-SCOPE-REVIEW
+:mid: 01M774FDH7HRY5CQ0DNGHYY3FG
+:title: Review zban's size before each release
+:status: accepted
+:methods: inspection
+:validates: GOAL-SMALL-TOOL
+
+Before each release, review the knowledge and the agent guide. Every capability traces to an accepted need. The commands in [[DES-CLI]] and the keys in [[DES-ISSUE-FILE]] changed only through recorded decisions. The agent guide stays under about 150 lines and covers every operation. In [[VAL-DOGFOOD]], agents needed nothing beyond the guide to predict what zban would do. Record shortfalls as issues or as changes to this knowledge.
 :::
