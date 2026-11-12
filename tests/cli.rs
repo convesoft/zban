@@ -613,7 +613,7 @@ fn list_filters_select_issues_in_listing_order() {
         (&["--parent", E], &[B, A]),
         (&["--parent", E, "--all"], &[B, A, F]),
         (&["--parent", "ZB-AAAAAA"], &[D]),
-        (&["--parent", "nonsense"], &[]),
+        (&["--parent", F, "--all"], &[]),
         (&["--ready"], &[A]),
         (&["--search", "frontmatter"], &[A]),
         (&["--search", "SEARCH"], &[C]),
@@ -681,6 +681,44 @@ fn list_short_options_select_what_the_long_options_select() {
     ] {
         assert_eq!(listed(&root, long), expected, "{long:?}");
         assert_eq!(listed(&root, short), expected, "{short:?}");
+    }
+}
+
+/// `list --parent` resolves its ID as `show` does, so a parent that cannot
+/// be shown fails with the same code instead of listing nothing.
+// @mara implements VER-CLI
+#[test]
+fn list_parent_fails_on_an_issue_show_cannot_find() {
+    let root = fixture("cli-list-parent");
+    write_files(
+        &root,
+        &[
+            (
+                ".zban/zb-kkkkkk.md",
+                &issue("Invalid", "blocked", "task", "", 8, ""),
+            ),
+            (
+                ".zban/zb-wwwwww.md",
+                &issue("Twin", "todo", "task", "", 9, ""),
+            ),
+            (
+                ".zban/archive/zb-wwwwww.md",
+                &issue("Twin", "done", "task", "", 9, ""),
+            ),
+        ],
+    );
+    for (parent, code) in [
+        ("zb-000000", "not_found"),
+        ("nonsense", "not_found"),
+        ("zb-kkkkkk", "unreadable"),
+        ("zb-wwwwww", "ambiguous_id"),
+    ] {
+        assert_eq!(error_code(&root, &["show", parent]), code, "{parent}");
+        assert_eq!(
+            error_code(&root, &["list", "--parent", parent]),
+            code,
+            "{parent}"
+        );
     }
 }
 

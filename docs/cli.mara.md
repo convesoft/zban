@@ -109,9 +109,9 @@ The command line and the MCP server expose the same operations with the same val
 | `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. With `--json` it prints `{"guide": "..."}`, with `null` outside a project. |
 | `mcp` | Serves MCP over stdio ([[DES-MCP-TOOLS]]). Takes no `--json`. |
 
-In `create`, `list` and `update`, `-s`, `-t` and `-p` are short for `--status`, `--type` and `--priority`. Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, `--append`, then the handoff.
+In `create`, `list` and `update`, `-s`, `-t` and `-p` are short for `--status`, `--type` and `--priority`. `list --parent` resolves its ID as `show` does, so an ID that is malformed or names no issue fails with `not_found`, and one naming two files or an unreadable file fails with `ambiguous_id` or `unreadable`. Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, `--append`, then the handoff.
 
-Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init` and `prime` fails with `project_not_found` when no project is found. The error codes are:
+Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init`, `prime` and `mcp` fails with `project_not_found` when no project is found; `mcp` starts anyway and fails each tool call instead ([[DES-MCP-TOOLS]]). The error codes are:
 
 | Code | When |
 | --- | --- |
