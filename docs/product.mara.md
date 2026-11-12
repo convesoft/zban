@@ -21,8 +21,8 @@ backlog that lives next to the code:
 
 Issues with a fixed set of types, statuses and priorities; parent, blocker,
 related and discovered-from relations; a computed list of ready work; automatic
-archiving of closed issues; an integrity check; the CLI with JSON output; the MCP
-server; and the agent guide. See [Issues](issues.mara.md), [Command line](cli.mara.md),
+archiving of closed issues; handoff notes for continuing work in a new session;
+an integrity check; the CLI with JSON output; the MCP server; and the agent guide. See [Issues](issues.mara.md), [Command line](cli.mara.md),
 [MCP server](mcp.mara.md) and [Using zban with agents](agents.mara.md).
 
 ## What zban deliberately does not do
@@ -114,6 +114,15 @@ Agents can create issues, record what is in progress, keep a task checklist curr
 :contributes_to: GOAL-AGENT-WORKFLOW
 
 An agent learns how to use zban, and the expected work discipline, from zban itself, whether it reaches zban through MCP or the command line, without the project writing its own instructions.
+:::
+
+:::mara need NEED-SESSION-CONTINUITY
+:mid: 01M777QQGMVA28TW42QWJCGFX0
+:title: Continue unfinished work in a new session
+:status: accepted
+:contributes_to: GOAL-AGENT-WORKFLOW
+
+A developer can end an agent session with work unfinished and continue it in a new session, with the same or another agent, from the current state, the next steps and the approaches already rejected, without replaying the old conversation.
 :::
 
 :::mara need NEED-PROJECT-MEMORY

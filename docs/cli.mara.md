@@ -21,6 +21,7 @@ zban update zb-n938cw --replace-old "- [ ] Preserve unknown keys" --replace-new 
 zban update zb-n938cw --append "## Summary of Changes
 
 Parser and writer implemented." -s done
+zban update zb-n938cw --handoff - < handoff.md   # replace the handoff note
 zban check                                  # report problems in .zban/
 zban check --fix                            # move misplaced files
 ```
@@ -91,7 +92,7 @@ The command line and the MCP server expose the same operations with the same val
 | `create <title>` | `-t TYPE`, `-s STATUS`, `-p PRIORITY`, `--tag T`…, `--parent ID`, `--blocked-by ID`…, `--related ID`…, `--discovered-from ID`, `--body TEXT\|-` |
 | `list` | `--status S`…, `--type T`…, `--priority P`…, `--tag T`…, `--parent ID`, `--ready`, `--search TEXT`, `--all` |
 | `show <id>…` | — |
-| `update <id>` | `-s`, `-t`, `-p`, `--title`, `--add-tag`/`--remove-tag`, `--parent ID`/`--no-parent`, `--add-blocked-by`/`--remove-blocked-by`, `--add-related`/`--remove-related`, `--discovered-from ID`/`--no-discovered-from`, `--body TEXT\|-`, `--append TEXT\|-`, `--replace-old TEXT --replace-new TEXT` (repeatable, applied in order), `--force` |
+| `update <id>` | `-s`, `-t`, `-p`, `--title`, `--add-tag`/`--remove-tag`, `--parent ID`/`--no-parent`, `--add-blocked-by`/`--remove-blocked-by`, `--add-related`/`--remove-related`, `--discovered-from ID`/`--no-discovered-from`, `--body TEXT\|-`, `--append TEXT\|-`, `--replace-old TEXT --replace-new TEXT` (repeatable, applied in order), `--handoff TEXT\|-`/`--no-handoff` ([[DES-HANDOFF]]), `--force` |
 | `delete <id>` | — |
 | `check` | `--fix` |
 | `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. |
@@ -101,7 +102,7 @@ Every command accepts the global options `--json` and `-C, --directory DIR` ([[D
 
 Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init` and `prime` fails with the error code `project_not_found` when no project is found. A concurrent change fails with `conflict` ([[REQ-NO-LOST-UPDATES]]).
 
-In JSON, an issue has `id`, `title`, `status`, `type`, `priority`, `tags`, `parent`, `blocked_by`, `related`, `discovered_from`, `created_at`, `closed_at`, `path`, `checklist` (`{checked, total}`), `ready` and `not_ready` (the reasons from [[DES-READINESS]]). `show` adds `body` and the reverse relations `children`, `blocks`, `related_from` and `discovered`. `list` returns `{"issues": [...]}` without bodies, in the order defined by [[DES-READINESS]]. Mutations return the resulting issue. `check` returns `{"findings": [{severity, code, path, message}]}`.
+In JSON, an issue has `id`, `title`, `status`, `type`, `priority`, `tags`, `parent`, `blocked_by`, `related`, `discovered_from`, `created_at`, `closed_at`, `path`, `checklist` (`{checked, total}`), `ready` and `not_ready` (the reasons from [[DES-READINESS]]). `show` adds `body`, `handoff` and the reverse relations `children`, `blocks`, `related_from` and `discovered`. `list` adds `handoff_at`. `list` returns `{"issues": [...]}` without bodies, in the order defined by [[DES-READINESS]]. Mutations return the resulting issue. `check` returns `{"findings": [{severity, code, path, message}]}`.
 :::
 
 :::mara design DES-SHARED-CORE

@@ -77,7 +77,7 @@ in [Using zban with agents](agents.mara.md#setup).
 | `list_issues` | `list` |
 | `show_issues` | `show`, for one or more IDs |
 | `create_issue` | `create` |
-| `update_issue` | `update`, including body edits and `force` |
+| `update_issue` | `update`, including body edits, the handoff and `force` |
 | `delete_issue` | `delete` |
 | `check_issues` | `check`, with optional `fix` |
 

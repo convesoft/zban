@@ -99,7 +99,8 @@ summary or reason first. A forced close leaves the children open, and
 `zban check` warns about them.
 
 By convention, a finished issue gets a `## Summary of Changes` section and a
-cancelled one gets `## Reasons for Cancelling`.
+cancelled one gets `## Reasons for Cancelling`. An unfinished issue can carry a
+`## Handoff` note for the next session; see [Handoffs](agents.mara.md#handoffs).
 
 ## Simultaneous changes
 
@@ -260,7 +261,7 @@ The filename is `<id>.md` and nothing else. The ID is read from the filename and
 :satisfies: REQ-RELATIONS
 :mitigates: RISK-MERGE-CONFLICTS
 
-A file starts with a line `---`, then a YAML mapping, then a closing `---` line. Everything after the closing line is the body: free-form Markdown that zban treats as opaque text. The only exception is task-item counting in [[DES-LIFECYCLE]].
+A file starts with a line `---`, then a YAML mapping, then a closing `---` line. Everything after the closing line is the body: free-form Markdown that zban treats as opaque text. The only exceptions are task-item counting in [[DES-LIFECYCLE]] and the handoff section in [[DES-HANDOFF]].
 
 | Key | Required | Value |
 | --- | --- | --- |

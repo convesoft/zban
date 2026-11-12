@@ -63,6 +63,16 @@ The fixture contains: A blocking B; an independent C; an epic E; a child D whose
 Setting `done` with an unchecked task item fails and changes nothing. With force it succeeds. A task item inside a fenced code block does not count. Setting `done` or `cancelled` on an issue with an open child fails, names the child and changes nothing. With force it succeeds and leaves the child unchanged. Closing sets `closed_at` and moves the file to `.zban/archive/`, and reopening clears `closed_at` and moves it back. Archived issues appear in `show`, in search, in relations and in `list --all`, but not in the default listing. Listings report checklist progress.
 :::
 
+:::mara verification VER-HANDOFF
+:mid: 01M777QQGM8AY4TX1GGM86HG6F
+:title: Write and read handoff notes
+:status: accepted
+:methods: test
+:verifies: REQ-HANDOFF
+
+Through the real binary: `update --handoff` adds a timestamped `## Handoff` section to a body without one, and a second update replaces it in place while every byte outside the section stays unchanged. Text read from standard input works. `--no-handoff` removes the section. Text containing a level 2 heading is rejected, a `## Handoff` heading inside a fenced code block is ignored, and a body with two handoff sections makes both options fail without writing. `show` returns the text and time, a heading without a timestamp gives `written_at: null`, and `list` reports `handoff_at`. Closing an issue leaves its handoff untouched, and `zban prime` and the MCP instructions contain no handoff text.
+:::
+
 :::mara verification VER-CHECK
 :mid: 01M764FJ3ZPNVFEX72X29BGRTT
 :title: Report and repair inconsistencies

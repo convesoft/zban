@@ -21,7 +21,7 @@ Agents work in a checkout. External trackers need network access and credentials
 :justifies: REQ-NO-GIT
 :justifies: DES-CLI
 
-Issue trackers for agents tend to grow into platforms: query engines, terminal and web UIs, agent chat, worktree and terminal management, claims, sessions and handoffs. Each addition looks reasonable, but together they make the tool hard to reason about. zban v1 contains issue files, relations, readiness, lifecycle and archive, the check command, the CLI, the MCP server and the agent guide.
+Issue trackers for agents tend to grow into platforms: query engines, terminal and web UIs, agent chat, worktree and terminal management, claims, named sessions and handoff machinery. Each addition looks reasonable, but together they make the tool hard to reason about. zban v1 contains issue files, relations, readiness, lifecycle and archive, handoff notes on issues, the check command, the CLI, the MCP server and the agent guide.
 
 Excluded are claims and locking, state shared across worktrees, running Git, running agents or managing worktrees, terminal and web UIs, a query language, templates, custom fields, configurable vocabulary, manual ordering, assignees and time tracking. Adding a capability requires a recorded need and a decision first, not just precedent in another tool.
 :::
@@ -74,6 +74,20 @@ Archiving in bulk on an explicit command depends on someone running it, and agen
 :justifies: REQ-RELATIONS
 
 Issue files are merged by Git, so the format avoids needless conflicts and drift. Each relation is stored once, on one issue. Storing both directions, such as `blocking` and `blocked_by`, lets the two disagree. There is no `updated_at`, which would conflict on every concurrent edit; Git history already records changes. Lists hold one item per line, the key order is fixed, and the ID exists only in the filename. Relations hold bare IDs, not Markdown links: a link would need rewriting in every referring issue whenever its target is archived, so closing one issue would touch others and conflict with their edits on other branches. Editors find an issue by its ID because the ID is the filename.
+:::
+
+:::mara decision ADR-HANDOFF-ON-ISSUE
+:mid: 01M777QQGMRG4N17FAT4EGF628
+:title: Keep handoffs as notes on issues, written and read on request
+:status: accepted
+:justifies: REQ-HANDOFF
+:justifies: DES-HANDOFF
+
+Agents lose context between sessions, and a short note written while the conversation is still available carries it best. Notes generated automatically when a session ends come too late: the model is gone and session-end hooks get little time. Stop hooks that force a note after every turn are noisy. So agents write a note only when the developer asks.
+
+The note lives in the issue body, overwritten in place, rather than in a separate handoff file or entity. The issue is already the record that outlives a session, a note there travels with the branch, and Git keeps earlier versions. A body section stays readable in Markdown previews and keeps the frontmatter small. zban stamps only the time, because it cannot read Git; the agent records the commit and branch.
+
+zban does not deliver notes into new sessions. Notes belong to issues, and zban cannot tell which issue a session is about. Including every in-progress note in `prime` or the MCP instructions would cost every session and show other people's work after merges. Choosing by the current worktree or branch would need Git access or worktree tracking, which [[REQ-NO-GIT]] and [[ADR-SMALL-SCOPE]] exclude. The developer asks the agent to continue, and the agent shows the issue.
 :::
 
 :::mara decision ADR-CLI-AND-MCP
