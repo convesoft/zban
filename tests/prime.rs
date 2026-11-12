@@ -299,3 +299,24 @@ fn guide_covers_its_sections_within_150_lines() {
     let lines = guide.lines().count();
     assert!(lines <= 150, "the guide has {lines} lines");
 }
+
+/// For `VAL-DOGFOOD`: this repository's `AGENTS.md` loads the guide with the
+/// line that `docs/agents.mara.md` recommends, and `zban prime` prints the
+/// guide here.
+#[test]
+fn this_repository_loads_the_guide() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let documented = fs::read_to_string(root.join("docs/agents.mara.md")).unwrap();
+    let line = documented
+        .lines()
+        .find(|line| line.starts_with("**IMPORTANT**") && line.contains("`zban prime`"))
+        .expect("docs/agents.mara.md recommends a `zban prime` line");
+    let agents = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+    assert!(
+        agents.lines().any(|agents_line| agents_line == line),
+        "AGENTS.md lacks {line:?}"
+    );
+
+    let expected = fs::read_to_string(root.join(SNAPSHOT)).unwrap();
+    assert_eq!(succeeded(&zban(root, &["prime"])), expected);
+}

@@ -1,10 +1,16 @@
 # Agent instructions
 
+**IMPORTANT**: before you do anything else, run `zban prime` and follow its output.
+
+zban has no release yet, so run the binary built from your checkout:
+`cargo run -q -- prime`, and `cargo run -q -- <command>` wherever the guide
+says `zban <command>`. The rules below add to the guide.
+
 ## Project
 
 zban is a file-based issue tracker for humans and coding agents. Issues are Markdown
 files in the repository, managed through a Rust CLI and an MCP server. The v1
-specification is agreed; implementation is starting.
+specification is agreed; implementation is in progress.
 
 Staying small is an explicit goal (`GOAL-SMALL-TOOL`).
 
@@ -32,22 +38,16 @@ Staying small is an explicit goal (`GOAL-SMALL-TOOL`).
 
 ## Working on an issue
 
-Until the zban CLI works (issue `zb-as3s58`), edit issue files by hand, exactly
-as `DES-ISSUE-FILE`, `DES-ISSUE-ID` and `DES-LIFECYCLE` specify.
+The guide covers finding, starting, updating and closing issues. In this
+repository, also:
 
-1. **Pick.** Choose a ready issue as defined in `DES-READINESS`, or the one the
-   user names. Set `status: in-progress`.
-2. **Read.** Read the cited Mara items before writing code.
-3. **Work.** Keep the body's checklist current.
-4. **Finish.** Append `## Summary of Changes`, including the checks you actually
-   ran. Set `status: done`, add `closed_at` (RFC 3339 UTC), and `git mv` the file
-   into `.zban/archive/`. Mark an issue done only when its `Done when` checks
-   pass.
-5. **Record new work.** File newly discovered work as a new issue with
-   `discovered_from`, rather than widening the current one. Generate an ID with:
-   `python3 -c "import secrets;a='0123456789abcdefghjkmnpqrstvwxyz';print('zb-'+''.join(secrets.choice(a) for _ in range(6)))"`
-   and confirm it is unused under `.zban/`.
-6. **Commit.** Commit issue files together with the code they describe.
+- Read the Mara items an issue cites before writing code.
+- Set an issue `done` only when its `Done when` checks actually pass, and name
+  the checks you ran in `## Summary of Changes`.
+- Create issues only with `zban create`, which generates an ID that is unused in
+  `.zban/` and `.zban/archive/`. Never choose an ID yourself.
+- Keep to one issue per pull request: file newly discovered work as a new issue
+  with `--discovered-from` rather than widening the current one.
 
 ## Scope
 
