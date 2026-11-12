@@ -2,24 +2,40 @@
 
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::Mutex;
 
-/// An empty directory for one test, under Cargo's temporary directory.
+/// An empty directory under Cargo's temporary directory, private to this
+/// call.
 pub fn temp_dir(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+    new_dir(Path::new(env!("CARGO_TARGET_TMPDIR")).join(unique(name)))
 }
 
 /// An empty directory outside any project, under the system's temporary
-/// directory. Cargo's temporary directory lies inside this repository, whose
-/// own `.zban/` would be found from there.
+/// directory, private to this call. Cargo's temporary directory lies inside
+/// this repository, whose own `.zban/` would be found from there.
 pub fn temp_dir_outside_projects(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("zban-test-{name}-{}", std::process::id()));
+    let name = format!("zban-test-{}-{}", unique(name), std::process::id());
+    new_dir(std::env::temp_dir().join(name))
+}
+
+/// `name` with a number that differs on each call with the same name. Tests
+/// run in parallel, and a directory that two of them share can be deleted
+/// while one is still using it.
+fn unique(name: &str) -> String {
+    static CALLS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+    let mut calls = CALLS.lock().unwrap();
+    let call = calls.entry(name.to_owned()).or_default();
+    *call += 1;
+    format!("{name}-{call}")
+}
+
+/// Empties or creates `dir`.
+fn new_dir(dir: PathBuf) -> PathBuf {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
