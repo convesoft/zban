@@ -111,6 +111,8 @@ zban is written in Rust and ships as one self-contained binary. It is distribute
 v1 supports Linux and macOS on x86_64 and aarch64. Windows is deferred until there is a need for it, because it needs its own handling of atomic file replacement, CRLF line endings and paths.
 
 Release binaries are built for `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin` and `aarch64-apple-darwin`. On Linux, musl is chosen over glibc because the binary is then statically linked: one file runs on every distribution, whatever its glibc version, including musl-based ones such as Alpine. A glibc binary would instead have to be built against the oldest glibc it should support. musl's slower memory allocator does not matter to a short-lived command that reads small files.
+
+A release is cut by pushing a tag `vX.Y.Z` that names the version in `Cargo.toml` and points at a commit on `main`. The release workflow refuses any other tag, and it runs the test suite on the tagged commit, on each platform whose binary it can run, before it creates the release. A release then ships only code that has landed on `main` and passes its tests.
 :::
 
 :::mara decision ADR-DEPENDENCIES
