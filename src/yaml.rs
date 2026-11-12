@@ -79,9 +79,15 @@ pub(crate) fn parse_header(text: &str, first_line: usize) -> Result<Vec<Entry>, 
         let key = reader.key(&mut seen)?;
         let value = reader.node()?;
         // The entry runs from its key to the line where its last content
-        // ends; blank and comment lines after that belong to no entry.
+        // ends; blank and comment lines after that belong to no entry. A
+        // block scalar ends after the indentation of the first line beyond
+        // it, so content that ends after nothing but spaces ended on the
+        // line above.
         let end = reader.content_end;
-        let last_line = if end.col() == 0 {
+        let ends_line_above = lines
+            .get(end.line() - 1)
+            .is_none_or(|line| line.chars().take(end.col()).all(|c| c == ' '));
+        let last_line = if ends_line_above {
             end.line() - 1
         } else {
             end.line()
@@ -396,20 +402,41 @@ mod tests {
 
     #[test]
     fn keeps_block_scalars_whole() {
-        let header = "kept: |+\n  text\n\n\nfolded: >\n  a\n  # b\n\n# comment\nflow: [\n  a,\n  ]  # c\n  # d\n";
-        let entries = parse_header(header, 2).unwrap();
-        assert_eq!(
-            entries[0].value,
-            Node::Scalar {
-                text: "text\n\n\n".into(),
-                plain: false
-            }
-        );
-        assert_eq!(entries[0].text, "kept: |+\n  text\n\n\n");
-        assert_eq!(entries[1].text, "folded: >\n  a\n  # b\n\n");
-        assert_eq!(entries[2].text, "flow: [\n  a,\n  ]  # c\n");
-        let rewritten: String = entries.iter().map(|entry| entry.text.as_str()).collect();
-        assert_eq!(parse_header(&rewritten, 2).unwrap(), entries);
+        let header = "kept: |+\n  text\n\n\nfolded: >\n  a\n  # b\n\n# comment\nempty: |-\nstrip: |-\n  s\n\nflow: [\n  a,\n  ]  # c\n  # d\nlast: |\n  l\n";
+        // Indenting the mapping moves the end of each block scalar off
+        // column 0 but leaves the entries the same.
+        for indent in ["", "  ", "    "] {
+            let indented: String = header
+                .lines()
+                .map(|line| match line {
+                    "" => "\n".to_owned(),
+                    line => format!("{indent}{line}\n"),
+                })
+                .collect();
+            let entries = parse_header(&indented, 2).unwrap();
+            assert_eq!(
+                entries[0].value,
+                Node::Scalar {
+                    text: "text\n\n\n".into(),
+                    plain: false
+                }
+            );
+            let texts: Vec<_> = entries.iter().map(|entry| entry.text.as_str()).collect();
+            assert_eq!(
+                texts,
+                [
+                    "kept: |+\n  text\n\n\n",
+                    "folded: >\n  a\n  # b\n\n",
+                    "empty: |-\n",
+                    "strip: |-\n  s\n\n",
+                    "flow: [\n  a,\n  ]  # c\n",
+                    "last: |\n  l\n",
+                ],
+                "{indented:?}"
+            );
+            let rewritten = texts.concat();
+            assert_eq!(parse_header(&rewritten, 2).unwrap(), entries);
+        }
     }
 
     #[test]
