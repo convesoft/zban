@@ -5,12 +5,12 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use petgraph::algo::astar;
+use petgraph::algo::{astar, tarjan_scc};
 use petgraph::graphmap::DiGraphMap;
 
 use crate::error::{Error, ErrorCode, Result};
 use crate::id::Id;
-use crate::issue::{Issue, IssueType, Status};
+use crate::issue::{Issue, IssueType, Problem, ProblemCode, Status};
 use crate::store::IssueFile;
 
 /// A readable issue whose ID names exactly one file.
@@ -449,6 +449,101 @@ impl<'a> Graph<'a> {
 
     fn stores_related(&self, id: &Id, other: &Id) -> bool {
         matches!(self.get(id), Some(Entry::Readable(found)) if found.issue.related.contains(other))
+    }
+
+    /// The relation findings of `DES-CHECK` across the whole project, each
+    /// with the file it concerns: references to unknown issues or to the issue
+    /// itself, blockers on an ancestor, cycles through `parent` and
+    /// `blocked_by`, `related` links stored on both issues, and open issues
+    /// under a closed parent. A reference to an unreadable or duplicated
+    /// issue is not reported here, because that file has its own finding.
+    // @mara implements DES-CHECK
+    pub(crate) fn problems(&self) -> Vec<(&'a IssueFile, Problem)> {
+        let mut problems = Vec::new();
+        for file in self.files {
+            let (Some(id), Some(issue)) = (&file.id, &file.issue) else {
+                continue;
+            };
+            let mut add = |code, message| problems.push((file, Problem::new(code, message)));
+            for (key, target) in references(issue) {
+                if target == id {
+                    let message = format!("`{key}` names {target}, the issue itself");
+                    add(ProblemCode::InvalidReference, message);
+                } else if self.get(target).is_none() {
+                    let message = format!("`{key}` names {target}, which does not exist");
+                    add(ProblemCode::InvalidReference, message);
+                }
+            }
+            let chain = self.chain(Some(id), issue, None);
+            for blocker in issue.blocked_by.iter().filter(|b| chain.contains(b)) {
+                let message = format!(
+                    "blocked by {blocker}, one of its own ancestors, which cannot close before it"
+                );
+                add(ProblemCode::Cycle, message);
+            }
+            // Reported once, on the issue with the later ID.
+            for other in issue.related.iter().filter(|&other| other < id) {
+                if self.stores_related(other, id) {
+                    let message = format!(
+                        "{other} stores the same `related` link to this issue; keep it on one of the two"
+                    );
+                    add(ProblemCode::RelatedBothSides, message);
+                }
+            }
+            if let (false, Some(parent)) = (issue.status.is_closed(), &issue.parent)
+                && let Some(Entry::Readable(found)) = self.get(parent)
+                && found.issue.status.is_closed()
+            {
+                let message = format!(
+                    "the parent {parent} is {}, but this issue is still {}",
+                    found.issue.status, issue.status
+                );
+                add(ProblemCode::OpenUnderClosed, message);
+            }
+        }
+        problems.extend(self.cycles());
+        problems
+    }
+
+    /// A `cycle` finding for each issue on a cycle through `parent` and
+    /// `blocked_by`, naming the shortest such cycle through it. A reference to
+    /// the issue itself is an invalid reference instead.
+    fn cycles(&self) -> Vec<(&'a IssueFile, Problem)> {
+        // Built in listing order, so the cycle each message names is stable.
+        let issues = self.issues();
+        let mut graph = DiGraphMap::<&Id, ()>::new();
+        for found in &issues {
+            graph.add_node(found.id);
+            for (_, target) in edges(found.issue).filter(|&(_, target)| target != found.id) {
+                graph.add_edge(found.id, target, ());
+            }
+        }
+        let mut problems = Vec::new();
+        for component in tarjan_scc(&graph) {
+            if component.len() < 2 {
+                continue;
+            }
+            for &id in &component {
+                // Unknown and unreadable issues have no edges, so every issue
+                // on a cycle is readable.
+                let Some(Entry::Readable(found)) = self.get(id) else {
+                    continue;
+                };
+                let back = graph
+                    .neighbors(id)
+                    .filter(|next| component.contains(next))
+                    .filter_map(|next| astar(&graph, next, |node| node == id, |_| 1, |_| 0))
+                    .min_by_key(|(cost, _)| *cost);
+                let Some((_, path)) = back else { continue };
+                let cycle: Vec<_> = std::iter::once(id).chain(path).map(Id::as_str).collect();
+                let message = format!(
+                    "on a cycle through `parent` and `blocked_by`: {}",
+                    cycle.join(" -> ")
+                );
+                problems.push((found.file, Problem::new(ProblemCode::Cycle, message)));
+            }
+        }
+        problems
     }
 }
 

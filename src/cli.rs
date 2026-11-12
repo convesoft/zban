@@ -56,6 +56,12 @@ enum Command {
         #[arg(value_name = "ID")]
         id: String,
     },
+    /// Report problems in `.zban/`; exits with status 1 when any is an error.
+    Check {
+        /// Move misplaced files into the directory their status requires.
+        #[arg(long)]
+        fix: bool,
+    },
 }
 
 #[derive(Args)]
@@ -211,6 +217,11 @@ fn execute(command: Command, directory: &Path) -> Result<Reply> {
         Command::Delete { id } => {
             let issue = operations::delete(&project()?, &id)?;
             Ok(Reply::new(&issue, human::changed("Deleted", &issue)))
+        }
+        Command::Check { fix } => {
+            let checked = operations::check(directory, fix)?;
+            let text = human::findings(&checked.findings);
+            Ok(Reply::new(&checked, text).failed(checked.has_errors()))
         }
     }
 }

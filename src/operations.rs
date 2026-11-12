@@ -12,9 +12,10 @@ use std::str::FromStr;
 
 use serde::Serialize;
 
+use crate::check::Finding;
 use crate::error::{Error, ErrorCode, Result};
 use crate::id::{Id, Prefix};
-use crate::issue::{Issue, IssueType, Priority, Status};
+use crate::issue::{Issue, IssueType, Priority, Severity, Status};
 use crate::lifecycle::Checklist;
 use crate::relations::{Entry, Graph, IssueRef, NotReady};
 use crate::store::{IssueFile, Project};
@@ -81,6 +82,21 @@ pub struct Warning {
     /// The absolute path of the skipped file.
     pub path: String,
     pub message: String,
+}
+
+/// The result of `check`: every finding, ordered by path, then code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Checked {
+    pub findings: Vec<Finding>,
+}
+
+impl Checked {
+    /// Whether any finding is an error, which makes the check fail.
+    pub fn has_errors(&self) -> bool {
+        self.findings
+            .iter()
+            .any(|finding| finding.severity == Severity::Error)
+    }
 }
 
 /// A `create` request.
@@ -332,6 +348,15 @@ pub fn delete(project: &Project, id: &str) -> Result<IssueView> {
     let view = IssueView::of(&graph, graph.resolve(&id)?);
     project.delete_among(&graph, &id)?;
     Ok(view)
+}
+
+/// Checks the project that `directory` is in and, with `fix`, first moves
+/// misplaced files (`DES-CHECK`). Like `init`, it takes a directory, because
+/// an invalid configuration is a finding rather than a failure.
+pub fn check(directory: &Path, fix: bool) -> Result<Checked> {
+    Ok(Checked {
+        findings: Project::check(directory, fix)?,
+    })
 }
 
 impl IssueView {

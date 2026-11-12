@@ -131,7 +131,8 @@ pub struct Problem {
     pub message: String,
 }
 
-/// The `DES-CHECK` codes that concern a single issue file.
+/// A stable `DES-CHECK` code. Loading an issue file records the first five;
+/// `zban check` finds the others across the project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProblemCode {
     InvalidFilename,
@@ -139,6 +140,41 @@ pub enum ProblemCode {
     MissingField,
     InvalidValue,
     UnknownKey,
+    InvalidConfig,
+    DuplicateId,
+    InvalidReference,
+    Cycle,
+    RelatedBothSides,
+    OpenUnderClosed,
+    Misplaced,
+}
+
+/// How serious a `DES-CHECK` finding is. Only errors make the check fail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Severity {
+    Error,
+    Warning,
+}
+
+impl Severity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
+        }
+    }
+}
+
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl serde::Serialize for Severity {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
 }
 
 impl ProblemCode {
@@ -149,13 +185,41 @@ impl ProblemCode {
             Self::MissingField => "missing_field",
             Self::InvalidValue => "invalid_value",
             Self::UnknownKey => "unknown_key",
+            Self::InvalidConfig => "invalid_config",
+            Self::DuplicateId => "duplicate_id",
+            Self::InvalidReference => "invalid_reference",
+            Self::Cycle => "cycle",
+            Self::RelatedBothSides => "related_both_sides",
+            Self::OpenUnderClosed => "open_under_closed",
+            Self::Misplaced => "misplaced",
         }
     }
 
-    /// Whether the problem is an error. Only `unknown_key` is a warning, and
-    /// it leaves the issue readable.
+    /// The severity `REQ-CHECK` gives the code: `unknown_key`,
+    /// `related_both_sides` and `open_under_closed` are warnings.
+    pub fn severity(self) -> Severity {
+        match self {
+            Self::UnknownKey | Self::RelatedBothSides | Self::OpenUnderClosed => Severity::Warning,
+            _ => Severity::Error,
+        }
+    }
+
+    /// Whether the problem is an error. Of the codes that loading records,
+    /// only `unknown_key` is a warning, and it leaves the issue readable.
     pub fn is_error(self) -> bool {
-        self != Self::UnknownKey
+        self.severity() == Severity::Error
+    }
+}
+
+impl fmt::Display for ProblemCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl serde::Serialize for ProblemCode {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
     }
 }
 

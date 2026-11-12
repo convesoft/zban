@@ -1,9 +1,11 @@
 //! Output for humans, printed without `--json`.
 
 use std::fmt::Write as _;
+use std::fs;
+use std::path::Path;
 
-use zban::Id;
 use zban::operations::{Initialized, IssueDetail, IssueView};
+use zban::{Finding, Id};
 
 pub fn initialized(initialized: &Initialized) -> String {
     format!(
@@ -103,6 +105,32 @@ fn detail(detail: &IssueDetail) -> String {
         if !text.ends_with('\n') {
             text.push('\n');
         }
+    }
+    text
+}
+
+/// One line per finding: `<path>: <severity>: <message> [<code>]`, with the
+/// path relative to the working directory when it lies below it. A clean
+/// check prints nothing.
+pub fn findings(findings: &[Finding]) -> String {
+    // Finding paths are canonical, so compare them with the canonical
+    // working directory.
+    let cwd = std::env::current_dir().and_then(fs::canonicalize).ok();
+    let mut text = String::new();
+    for finding in findings {
+        let path = Path::new(&finding.path);
+        let shown = cwd
+            .as_deref()
+            .and_then(|cwd| path.strip_prefix(cwd).ok())
+            .unwrap_or(path);
+        let _ = writeln!(
+            text,
+            "{}: {}: {} [{}]",
+            shown.display(),
+            finding.severity,
+            finding.message,
+            finding.code
+        );
     }
     text
 }
