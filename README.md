@@ -3,8 +3,8 @@
 **zban is a file-based issue tracker for you and your coding agents.** Issues are
 Markdown files in your repository, managed through a CLI and an MCP server.
 
-> **Status:** the v1 specification is agreed; implementation is starting. Nothing
-> below is usable yet. Progress is tracked in [`.zban/`](.zban/).
+> **Status:** the v1 specification is agreed; implementation is in progress. Only
+> `zban init` works so far. Progress is tracked in [`.zban/`](.zban/).
 
 ## Why
 
