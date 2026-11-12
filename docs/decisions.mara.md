@@ -102,13 +102,15 @@ MCP gives agents typed tools and server instructions in clients that support the
 
 :::mara decision ADR-RUST-BINARY
 :mid: 01M764FJ3ZRYT7TB8RKNHPFM8K
-:title: Ship one Rust binary, dual-licensed
+:title: Ship one Rust binary through GitHub Releases, dual-licensed
 :status: accepted
 :justifies: DES-SHARED-CORE
 
-zban is written in Rust and ships as one self-contained binary. It is distributed through `cargo install zban` and prebuilt binaries on GitHub Releases; package-manager wrappers are not part of v1. The license is `MIT OR Apache-2.0`.
+zban is written in Rust and ships as one self-contained binary. It is distributed only through GitHub Releases: each release attaches prebuilt binaries and a SHA-256 checksum file, and its tag can be built from source with `cargo install --git https://github.com/convesoft/zban --tag vX.Y.Z`. zban is not published to crates.io, and its manifest sets `publish = false` so that nobody publishes it by accident. zban is an application, not a library other crates depend on, and one channel keeps a release to pushing a tag, with no registry account, publish token or crate name to maintain. Package-manager wrappers, such as an npm package, are not part of v1; adding one needs its own decision. The license is `MIT OR Apache-2.0`.
 
 v1 supports Linux and macOS on x86_64 and aarch64. Windows is deferred until there is a need for it, because it needs its own handling of atomic file replacement, CRLF line endings and paths.
+
+Release binaries are built for `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin` and `aarch64-apple-darwin`. On Linux, musl is chosen over glibc because the binary is then statically linked: one file runs on every distribution, whatever its glibc version, including musl-based ones such as Alpine. A glibc binary would instead have to be built against the oldest glibc it should support. musl's slower memory allocator does not matter to a short-lived command that reads small files.
 :::
 
 :::mara decision ADR-DEPENDENCIES
