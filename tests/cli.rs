@@ -645,6 +645,45 @@ fn list_filters_select_issues_in_listing_order() {
     assert_eq!(reasons(E), serde_json::json!(["epic"]));
 }
 
+/// `-s`, `-t` and `-p` are short for `--status`, `--type` and `--priority`
+/// in `list`, as in `create` and `update`.
+// @mara implements VER-CLI
+#[test]
+fn list_short_options_select_what_the_long_options_select() {
+    let root = fixture("cli-list-short-options");
+    for (short, long, expected) in [
+        (
+            &["-s", "todo"][..],
+            &["--status", "todo"][..],
+            &[A, E, D][..],
+        ),
+        (
+            &["-s", "done", "-s", "cancelled"],
+            &["--status", "done", "--status", "cancelled"],
+            &[G, F],
+        ),
+        (&["-t", "task"], &["--type", "task"], &[A, D]),
+        (
+            &["-t", "task", "-t", "bug", "--all"],
+            &["--type", "task", "--type", "bug", "--all"],
+            &[B, A, G, D, F],
+        ),
+        (
+            &["-p", "high", "--all"],
+            &["--priority", "high", "--all"],
+            &[A, G],
+        ),
+        (
+            &["-s", "todo", "-t", "task", "-p", "normal"],
+            &["--status", "todo", "--type", "task", "--priority", "normal"],
+            &[D],
+        ),
+    ] {
+        assert_eq!(listed(&root, long), expected, "{long:?}");
+        assert_eq!(listed(&root, short), expected, "{short:?}");
+    }
+}
+
 // @mara implements VER-CLI
 #[test]
 fn commands_outside_a_project_fail_with_project_not_found() {

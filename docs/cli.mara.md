@@ -25,6 +25,10 @@ zban check                                  # report problems in .zban/
 zban check --fix                            # move misplaced files, delete leftover temporary files
 ```
 
+`create`, `list` and `update` take `-s`, `-t` and `-p` as short forms of
+`--status`, `--type` and `--priority`, so `zban list -t bug -p high` lists the
+open high-priority bugs.
+
 Global options are `--json` and `-C, --directory DIR`. zban finds its project by
 searching upward from the current directory to the nearest `.zban/`. With
 `-C DIR` it behaves as if started in `DIR`, so any directory inside a project
@@ -97,7 +101,7 @@ The command line and the MCP server expose the same operations with the same val
 | --- | --- |
 | `init` | `[--prefix P]` |
 | `create <title>` | `-t TYPE`, `-s STATUS`, `-p PRIORITY`, `--tag T`…, `--parent ID`, `--blocked-by ID`…, `--related ID`…, `--discovered-from ID`, `--body TEXT\|-` |
-| `list` | `--status S`…, `--type T`…, `--priority P`…, `--tag T`…, `--parent ID` (direct children), `--ready`, `--search TEXT`, `--all` |
+| `list` | `-s, --status S`…, `-t, --type T`…, `-p, --priority P`…, `--tag T`…, `--parent ID` (direct children), `--ready`, `--search TEXT`, `--all` |
 | `show <id>…` | — |
 | `update <id>` | `-s`, `-t`, `-p`, `--title`, `--add-tag`/`--remove-tag`, `--parent ID`/`--no-parent`, `--add-blocked-by`/`--remove-blocked-by`, `--add-related`/`--remove-related`, `--discovered-from ID`/`--no-discovered-from`, `--body TEXT\|-`, `--append TEXT\|-`, `--replace-old TEXT --replace-new TEXT` (repeatable, applied in order), `--handoff TEXT\|-`/`--no-handoff` ([[DES-HANDOFF]]), `--force` |
 | `delete <id>` | — |
@@ -105,7 +109,7 @@ The command line and the MCP server expose the same operations with the same val
 | `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. With `--json` it prints `{"guide": "..."}`, with `null` outside a project. |
 | `mcp` | Serves MCP over stdio ([[DES-MCP-TOOLS]]). Takes no `--json`. |
 
-Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, `--append`, then the handoff.
+In `create`, `list` and `update`, `-s`, `-t` and `-p` are short for `--status`, `--type` and `--priority`. Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, `--append`, then the handoff.
 
 Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init` and `prime` fails with `project_not_found` when no project is found. The error codes are:
 
