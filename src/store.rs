@@ -825,10 +825,13 @@ mod tests {
         }
         for &code in UNSUPPORTED {
             let error = io::Error::from_raw_os_error(code);
-            // The operating system's own message confirms each number.
+            // The operating system's own message confirms each number. Its
+            // letter case depends on the C library: glibc says "Operation not
+            // supported" for 95, musl "Not supported".
             let message = error.to_string();
+            let lowercase = message.to_lowercase();
             assert!(
-                message.contains("not supported") || message.contains("not implemented"),
+                lowercase.contains("not supported") || lowercase.contains("not implemented"),
                 "{code}: {message}"
             );
             assert!(unsupported(&error), "{message}");
