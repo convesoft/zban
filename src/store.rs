@@ -427,11 +427,16 @@ impl Project {
     /// that no other zban process replaces, moves or deletes an issue file
     /// between the checks in `write` and its change (`ADR-WRITE-LOCK`). The
     /// lock waits for another holder and is released when `write` returns.
+    /// Where the file system has no advisory locks, `write` runs unlocked.
     // @mara implements DES-SHARED-CORE
     fn locked<T>(&self, write: impl FnOnce() -> Result<T>) -> Result<T> {
         let dir = self.dir();
         let handle = File::open(&dir).map_err(|error| Error::io(&dir, &error))?;
-        handle.lock().map_err(|error| Error::io(&dir, &error))?;
+        if let Err(error) = handle.lock()
+            && !proceeds_unlocked(&error)
+        {
+            return Err(Error::io(&dir, &error));
+        }
         write()
     }
 
@@ -483,6 +488,32 @@ fn conflict(file: &IssueFile, what: &str) -> Error {
         ),
     )
 }
+
+/// Whether a write goes ahead without the lock after taking it failed with
+/// `error`: only when the file system has no advisory locks, which leaves the
+/// byte comparison as the only guard (`ADR-WRITE-LOCK`). Any other failure
+/// fails the write.
+fn proceeds_unlocked(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::Unsupported
+        || error
+            .raw_os_error()
+            .is_some_and(|code| LOCKING_UNSUPPORTED.contains(&code))
+}
+
+/// `ENOSYS`, `ENOTSUP` and `EOPNOTSUPP` on the platforms of
+/// `ADR-RUST-BINARY`, which the standard library may not report as
+/// `Unsupported`; it does not for macOS's `ENOTSUP`. Elsewhere only
+/// `Unsupported` counts.
+const LOCKING_UNSUPPORTED: &[i32] = if cfg!(target_vendor = "apple") {
+    &[78, 45, 102]
+} else if cfg!(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)) {
+    &[38, 95]
+} else {
+    &[]
+};
 
 /// Every `*.md` file is an issue, whatever its name.
 fn is_issue_file(path: &Path) -> bool {
@@ -666,5 +697,38 @@ mod tests {
             "{names:?}"
         );
         fs::remove_dir_all(project.root()).unwrap();
+    }
+
+    // @mara implements VER-ISSUE-FILES
+    #[test]
+    fn a_write_proceeds_unlocked_only_where_locking_is_unsupported() {
+        if cfg!(any(target_os = "linux", target_os = "macos"))
+            && cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+        {
+            assert!(!LOCKING_UNSUPPORTED.is_empty());
+        }
+        for &code in LOCKING_UNSUPPORTED {
+            let error = io::Error::from_raw_os_error(code);
+            // The operating system's own message confirms each number.
+            let message = error.to_string();
+            assert!(
+                message.contains("not supported") || message.contains("not implemented"),
+                "{code}: {message}"
+            );
+            assert!(proceeds_unlocked(&error), "{message}");
+        }
+        assert!(proceeds_unlocked(&io::ErrorKind::Unsupported.into()));
+
+        let failures = [
+            io::ErrorKind::PermissionDenied.into(),
+            io::ErrorKind::Interrupted.into(),
+            io::Error::other("lock failed"),
+            // EIO and EACCES, which have these numbers on Linux and macOS.
+            io::Error::from_raw_os_error(5),
+            io::Error::from_raw_os_error(13),
+        ];
+        for error in failures {
+            assert!(!proceeds_unlocked(&error), "{error}");
+        }
     }
 }

@@ -54,7 +54,7 @@ fn parallel_updates_of_one_issue_lose_none() {
                         let mut attempts = 0;
                         // A conflict means another update landed first; retry
                         // as the agent guide says. On btrfs, a listing taken
-                        // during another update can miss the issue (zb-7mbhpw).
+                        // during another update can miss the issue (zb-906f27).
                         while let Err(code) = run(root, &["update", id, "--append", &line]) {
                             assert!(
                                 ["conflict", "not_found"].contains(&code.as_str()),

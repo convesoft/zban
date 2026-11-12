@@ -146,7 +146,7 @@ Comparing a file's bytes just before renaming over it leaves a window between th
 
 A lock file was rejected: a crash can leave it behind and it can be committed by accident, whereas the operating system releases a lock on the directory when the process ends, even when it is killed. Holding the lock for a whole command is not needed: the byte comparison already reports stale reads as `conflict`, and a short lock keeps other zban processes from waiting while a command reads the project.
 
-The lock is not a claim: it covers one file operation, not an issue between commands, so the exclusion of claims and locking in [[ADR-SMALL-SCOPE]] stands. It coordinates zban processes that share one `.zban/` directory. Editors, Git and other worktrees do not take it. On a file system without advisory locks, zban's writes fail with `io`.
+The lock is not a claim: it covers one file operation, not an issue between commands, so the exclusion of claims and locking in [[ADR-SMALL-SCOPE]] stands. It coordinates zban processes that share one `.zban/` directory. Editors, Git and other worktrees do not take it. On a file system without advisory locks, taking the lock fails as unsupported, and zban then writes without it, guarded by the byte comparison alone as before; any other failure to take the lock fails the write with `io`.
 :::
 
 ## Risks
