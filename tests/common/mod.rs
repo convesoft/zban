@@ -114,3 +114,5 @@ pub fn stderr(output: &Output) -> String {
 pub fn stdout(output: &Output) -> String {
     String::from_utf8(output.stdout.clone()).unwrap()
 }
+
+pub mod mcp;

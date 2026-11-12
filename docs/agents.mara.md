@@ -2,8 +2,8 @@
 
 zban teaches agents its workflow itself, so a project needs very little setup.
 
-> `zban mcp` and handoff notes are not implemented yet. This page describes the
-> agreed v1 interface.
+> Handoff notes are not implemented yet. This page describes the agreed v1
+> interface.
 
 ## Setup
 

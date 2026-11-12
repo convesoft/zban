@@ -14,6 +14,7 @@ use serde::Serialize;
 
 use crate::check::Finding;
 use crate::error::{Error, ErrorCode, Result};
+use crate::guide::Surface;
 use crate::id::{Id, Prefix};
 use crate::issue::{Issue, IssueType, Priority, Severity, Status};
 use crate::lifecycle::Checklist;
@@ -365,11 +366,11 @@ pub fn check(directory: &Path, fix: bool) -> Result<Checked> {
     })
 }
 
-/// The agent guide when a project is found from `directory`, and `None`
-/// otherwise. A project whose configuration is invalid still counts as found,
-/// because the guide does not depend on it.
+/// The agent guide for `surface` when a project is found from `directory`,
+/// and `None` otherwise. A project whose configuration is invalid still
+/// counts as found, because the guide does not depend on it.
 // @mara implements DES-AGENT-GUIDE
-pub fn guide(directory: &Path) -> Result<Guide> {
+pub fn guide(directory: &Path, surface: Surface) -> Result<Guide> {
     let found = match Project::discover(directory) {
         Ok(_) => true,
         Err(error) => match error.code {
@@ -379,7 +380,7 @@ pub fn guide(directory: &Path) -> Result<Guide> {
         },
     };
     Ok(Guide {
-        guide: found.then(crate::guide::render),
+        guide: found.then(|| crate::guide::render(surface)),
     })
 }
 
