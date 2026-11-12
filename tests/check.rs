@@ -7,11 +7,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use common::{
-    copy_repository_backlog, snapshot, stderr, stdout, temp_dir, temp_dir_outside_projects,
-    write_files, zban,
-};
+use common::{copy_repository_backlog, snapshot, stderr, stdout, temp_dir, write_files, zban};
 use serde_json::{Value, json};
+use tempfile::TempDir;
 use zban::{Project, Severity};
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
@@ -70,14 +68,17 @@ fn lookalikes() -> Vec<(&'static str, String)> {
 /// A header that Git left with conflict markers after a merge.
 const CONFLICTED: &str = "---\n<<<<<<< HEAD\ntitle: Ours\n=======\ntitle: Theirs\n>>>>>>> topic\nstatus: todo\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\n---\n";
 
-/// A project with the default configuration, then `files` written over it.
-fn project(name: &str, files: &[(&str, String)]) -> PathBuf {
-    let root = temp_dir(&format!("check-{name}"));
+/// A project with the default configuration, then `files` written over it,
+/// in a directory that lasts as long as the returned [`TempDir`], and its
+/// root.
+fn project(files: &[(&str, String)]) -> (TempDir, PathBuf) {
+    let dir = temp_dir();
+    let root = dir.path().to_owned();
     write_files(&root, &[(".zban/config.toml", CONFIG)]);
     for (path, content) in files {
         write_files(&root, &[(path, content)]);
     }
-    root
+    (dir, root)
 }
 
 /// A finding as `zban check` prints it, without the message:
@@ -414,7 +415,7 @@ fn corpus() -> Vec<Case> {
 fn each_broken_project_reports_its_code_severity_and_path() {
     let mut covered = BTreeSet::new();
     for case in corpus() {
-        let root = project(case.name, &case.files);
+        let (_dir, root) = project(&case.files);
         let (status, findings) = check(&root, &[]);
         assert_eq!(findings, reported(&case.findings), "{}", case.name);
         let errors = case
@@ -430,22 +431,19 @@ fn each_broken_project_reports_its_code_severity_and_path() {
 // @mara implements VER-CHECK
 #[test]
 fn only_warnings_exit_zero_and_a_clean_project_prints_nothing() {
-    let root = project(
-        "warnings-only",
-        &[
-            (".zban/zb-aaaaaa.md", issue("todo", "assignee: alice\n")),
-            (
-                ".zban/zb-bbbbbb.md",
-                issue("todo", "related:\n  - zb-cccccc\n"),
-            ),
-            (
-                ".zban/zb-cccccc.md",
-                issue("todo", "related:\n  - zb-bbbbbb\n"),
-            ),
-            (".zban/archive/zb-dddddd.md", issue("done", "")),
-            (".zban/zb-eeeeee.md", issue("draft", "parent: zb-dddddd\n")),
-        ],
-    );
+    let (_dir, root) = project(&[
+        (".zban/zb-aaaaaa.md", issue("todo", "assignee: alice\n")),
+        (
+            ".zban/zb-bbbbbb.md",
+            issue("todo", "related:\n  - zb-cccccc\n"),
+        ),
+        (
+            ".zban/zb-cccccc.md",
+            issue("todo", "related:\n  - zb-bbbbbb\n"),
+        ),
+        (".zban/archive/zb-dddddd.md", issue("done", "")),
+        (".zban/zb-eeeeee.md", issue("draft", "parent: zb-dddddd\n")),
+    ]);
     let (status, findings) = check(&root, &[]);
     assert_eq!(status, 0);
     assert_eq!(
@@ -457,7 +455,7 @@ fn only_warnings_exit_zero_and_a_clean_project_prints_nothing() {
         ])
     );
 
-    let clean = project("clean", &[(".zban/zb-aaaaaa.md", issue("todo", ""))]);
+    let (_dir, clean) = project(&[(".zban/zb-aaaaaa.md", issue("todo", ""))]);
     let output = zban(&clean, &["check"]);
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stdout(&output), "");
@@ -486,7 +484,7 @@ fn fix_moves_only_misplaced_files_and_deletes_only_temporary_files() {
         (TEMPORARY, "---\ntitle: Partial".to_owned()),
         (".zban/archive/.zban-fedcba9876543210.tmp", String::new()),
     ];
-    let root = project("fix", &[&issues[..], &temporary, &lookalikes()].concat());
+    let (_dir, root) = project(&[&issues[..], &temporary, &lookalikes()].concat());
     let (_, before) = check(&root, &[]);
     for code in ["misplaced", "temporary_file"] {
         assert!(before.iter().any(|(_, _, found)| found == code), "{code}");
@@ -525,16 +523,13 @@ fn fix_moves_only_misplaced_files_and_deletes_only_temporary_files() {
 // @mara implements VER-CHECK
 #[test]
 fn a_misplaced_file_whose_target_is_taken_stays_and_is_reported() {
-    let root = project(
-        "fix-taken",
-        &[
-            (".zban/zb-aaaaaa.md", issue("done", "")),
-            (".zban/archive/zb-aaaaaa.md", issue("done", "")),
-            (".zban/zb-bbbbbb.md", issue("todo", "")),
-            (".zban/archive/zb-bbbbbb.md", issue("todo", "")),
-            (".zban/archive/zb-cccccc.md", issue("todo", "")),
-        ],
-    );
+    let (_dir, root) = project(&[
+        (".zban/zb-aaaaaa.md", issue("done", "")),
+        (".zban/archive/zb-aaaaaa.md", issue("done", "")),
+        (".zban/zb-bbbbbb.md", issue("todo", "")),
+        (".zban/archive/zb-bbbbbb.md", issue("todo", "")),
+        (".zban/archive/zb-cccccc.md", issue("todo", "")),
+    ]);
     let before_fix = files(&root);
     let (status, findings) = check(&root, &["--fix"]);
     assert_eq!(status, 1);
@@ -569,21 +564,18 @@ fn a_misplaced_file_whose_target_is_taken_stays_and_is_reported() {
 // @mara implements VER-CHECK
 #[test]
 fn findings_carry_severity_code_absolute_path_and_message() {
-    let root = project(
-        "library",
-        &[
-            (
-                ".zban/zb-aaaaaa.md",
-                issue("done", "assignee: alice\nblocked_by:\n  - zb-000000\n"),
-            ),
-            (".zban/zb-bbbbbb.md", issue("todo", "parent: zb-cccccc\n")),
-            (
-                ".zban/zb-cccccc.md",
-                issue("todo", "blocked_by:\n  - zb-bbbbbb\n"),
-            ),
-            (TEMPORARY, String::new()),
-        ],
-    );
+    let (_dir, root) = project(&[
+        (
+            ".zban/zb-aaaaaa.md",
+            issue("done", "assignee: alice\nblocked_by:\n  - zb-000000\n"),
+        ),
+        (".zban/zb-bbbbbb.md", issue("todo", "parent: zb-cccccc\n")),
+        (
+            ".zban/zb-cccccc.md",
+            issue("todo", "blocked_by:\n  - zb-bbbbbb\n"),
+        ),
+        (TEMPORARY, String::new()),
+    ]);
     let findings = Project::check(&root, false).unwrap();
     let root = fs::canonicalize(&root).unwrap();
     let summary: Vec<_> = findings
@@ -647,20 +639,17 @@ fn findings_carry_severity_code_absolute_path_and_message() {
 // @mara implements VER-CHECK
 #[test]
 fn json_lists_each_finding_with_its_absolute_path() {
-    let root = project(
-        "json",
-        &[
-            (".zban/zb-aaaaaa.md", issue("done", "assignee: alice\n")),
-            (
-                ".zban/zb-bbbbbb.md",
-                issue("todo", "related:\n  - zb-cccccc\n"),
-            ),
-            (
-                ".zban/zb-cccccc.md",
-                issue("todo", "related:\n  - zb-bbbbbb\n"),
-            ),
-        ],
-    );
+    let (_dir, root) = project(&[
+        (".zban/zb-aaaaaa.md", issue("done", "assignee: alice\n")),
+        (
+            ".zban/zb-bbbbbb.md",
+            issue("todo", "related:\n  - zb-cccccc\n"),
+        ),
+        (
+            ".zban/zb-cccccc.md",
+            issue("todo", "related:\n  - zb-bbbbbb\n"),
+        ),
+    ]);
     let canonical = fs::canonicalize(&root).unwrap();
     let path = |relative: &str| canonical.join(relative).display().to_string();
     let (status, document) = check_json(&root, &[]);
@@ -690,13 +679,15 @@ fn json_lists_each_finding_with_its_absolute_path() {
     );
 
     // Paths stay absolute when zban runs elsewhere with `-C`.
-    let outside = temp_dir_outside_projects("check-json-outside");
-    let output = zban(&outside, &["-C", root.to_str().unwrap(), "check", "--json"]);
+    let outside = temp_dir();
+    let output = zban(
+        outside.path(),
+        &["-C", root.to_str().unwrap(), "check", "--json"],
+    );
     assert_eq!(
         serde_json::from_slice::<Value>(&output.stdout).unwrap(),
         document
     );
-    fs::remove_dir_all(outside).unwrap();
 
     // Fixed, the misplaced file is no longer reported, and warnings alone exit 0.
     let (status, document) = check_json(&root, &["--fix"]);
@@ -720,16 +711,13 @@ fn json_lists_each_finding_with_its_absolute_path() {
         ]
     );
 
-    let clean = project("json-clean", &[(".zban/zb-aaaaaa.md", issue("todo", ""))]);
+    let (_dir, clean) = project(&[(".zban/zb-aaaaaa.md", issue("todo", ""))]);
     assert_eq!(check_json(&clean, &[]), (0, json!({"findings": []})));
 
-    let broken = project(
-        "json-config",
-        &[(
-            ".zban/config.toml",
-            "format_version = 2\nprefix = \"zb\"\n".to_owned(),
-        )],
-    );
+    let (_dir, broken) = project(&[(
+        ".zban/config.toml",
+        "format_version = 2\nprefix = \"zb\"\n".to_owned(),
+    )]);
     let (status, document) = check_json(&broken, &[]);
     assert_eq!(status, 1);
     let config = fs::canonicalize(&broken).unwrap().join(".zban/config.toml");
@@ -747,33 +735,30 @@ fn json_lists_each_finding_with_its_absolute_path() {
 // @mara implements VER-CHECK
 #[test]
 fn this_repository_backlog_is_clean() {
-    let root = temp_dir("check-repository");
-    copy_repository_backlog(&root);
-    assert_eq!(check(&root, &[]), (0, Vec::new()));
+    let dir = temp_dir();
+    copy_repository_backlog(dir.path());
+    assert_eq!(check(dir.path(), &[]), (0, Vec::new()));
 }
 
 #[test]
 fn check_finds_its_project_like_every_command() {
-    let outside = temp_dir_outside_projects("check-outside");
-    let output = zban(&outside, &["check"]);
+    let outside = temp_dir();
+    let output = zban(outside.path(), &["check"]);
     assert_eq!(output.status.code(), Some(1));
     assert!(
         stderr(&output).contains("[project_not_found]"),
         "{}",
         stderr(&output)
     );
-    let output = zban(&outside, &["check", "--json"]);
+    let output = zban(outside.path(), &["check", "--json"]);
     assert_eq!(output.status.code(), Some(1));
     let document: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(document["error"]["code"], "project_not_found");
 
     // With `-C`, paths outside the working directory are shown in full.
-    let root = project(
-        "directory-option",
-        &[(".zban/zb-aaaaaa.md", issue("done", ""))],
-    );
+    let (_dir, root) = project(&[(".zban/zb-aaaaaa.md", issue("done", ""))]);
     let output = zban(
-        &outside,
+        outside.path(),
         &["-C", root.join(".zban").to_str().unwrap(), "check"],
     );
     assert_eq!(output.status.code(), Some(1));
@@ -783,5 +768,4 @@ fn check_finds_its_project_like_every_command() {
         "{}",
         stdout(&output)
     );
-    fs::remove_dir_all(outside).unwrap();
 }

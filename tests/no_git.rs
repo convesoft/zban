@@ -6,7 +6,7 @@ mod common;
 use std::fs;
 use std::path::Path;
 
-use common::{snapshot, stderr, stdout, temp_dir_outside_projects, write_files, zban};
+use common::{snapshot, stderr, stdout, temp_dir, write_files, zban};
 
 /// Runs a command that must succeed, with `--json`, and returns its document.
 fn ok(dir: &Path, args: &[&str]) -> serde_json::Value {
@@ -27,32 +27,33 @@ fn id(value: &serde_json::Value) -> String {
 // @mara implements VER-NO-GIT
 #[test]
 fn every_command_works_outside_git_and_writes_only_inside_zban() {
-    let root = temp_dir_outside_projects("no-git");
+    let dir = temp_dir();
+    let root = dir.path();
     for dir in root.ancestors() {
         assert!(!dir.join(".git").exists(), "{} is in Git", root.display());
     }
     write_files(
-        &root,
+        root,
         &[
             ("README.md", "# Project\n"),
             ("src/lib.rs", "// code\n"),
             (".gitignore", "target/\n"),
         ],
     );
-    let outside_zban = || snapshot(&root, &[".zban"]);
+    let outside_zban = || snapshot(root, &[".zban"]);
     let before = outside_zban();
 
-    ok(&root, &["init", "--prefix", "np"]);
-    let first = id(&ok(&root, &["create", "First", "--body", "- [ ] step"]));
+    ok(root, &["init", "--prefix", "np"]);
+    let first = id(&ok(root, &["create", "First", "--body", "- [ ] step"]));
     let second = id(&ok(
-        &root,
+        root,
         &["create", "Second", "-t", "bug", "--blocked-by", &first],
     ));
-    ok(&root, &["list"]);
-    ok(&root, &["list", "--ready", "--all", "--search", "first"]);
-    ok(&root, &["show", &first, &second]);
+    ok(root, &["list"]);
+    ok(root, &["list", "--ready", "--all", "--search", "first"]);
+    ok(root, &["show", &first, &second]);
     ok(
-        &root,
+        root,
         &[
             "update",
             &first,
@@ -64,7 +65,7 @@ fn every_command_works_outside_git_and_writes_only_inside_zban() {
     );
     // Close, which archives, then reopen and close again.
     ok(
-        &root,
+        root,
         &[
             "update",
             &first,
@@ -78,10 +79,10 @@ fn every_command_works_outside_git_and_writes_only_inside_zban() {
             "done",
         ],
     );
-    ok(&root, &["update", &first, "-s", "todo"]);
-    ok(&root, &["update", &first, "-s", "cancelled"]);
+    ok(root, &["update", &first, "-s", "todo"]);
+    ok(root, &["update", &first, "-s", "cancelled"]);
     ok(
-        &root,
+        root,
         &[
             "update",
             &second,
@@ -91,21 +92,20 @@ fn every_command_works_outside_git_and_writes_only_inside_zban() {
             &first,
         ],
     );
-    ok(&root, &["delete", &second]);
+    ok(root, &["delete", &second]);
     // Check, then repair a closed issue moved back out of the archive by hand.
     let clean = serde_json::json!({"findings": []});
-    assert_eq!(ok(&root, &["check"]), clean);
+    assert_eq!(ok(root, &["check"]), clean);
     let archived = root.join(format!(".zban/archive/{first}.md"));
     fs::rename(&archived, root.join(format!(".zban/{first}.md"))).unwrap();
-    assert_eq!(ok(&root, &["check", "--fix"]), clean);
-    let output = zban(&root, &["list", "--all"]);
+    assert_eq!(ok(root, &["check", "--fix"]), clean);
+    let output = zban(root, &["list", "--all"]);
     assert!(output.status.success());
     assert!(stdout(&output).contains("First"));
 
     assert_eq!(outside_zban(), before);
     assert!(!root.join(".git").exists());
     assert!(archived.is_file());
-    fs::remove_dir_all(root).unwrap();
 }
 
 /// The inspection of `VER-NO-GIT`, automated: no source file starts a process.

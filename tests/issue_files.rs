@@ -8,6 +8,7 @@ use std::path::Path;
 use common::{
     copy_repository_backlog, json_error_code, racing_updates, stderr, temp_dir, write_files, zban,
 };
+use tempfile::TempDir;
 use zban::{
     ErrorCode, Id, Issue, IssueFile, IssueType, Prefix, Priority, ProblemCode, Project, Status,
     Timestamp,
@@ -15,11 +16,12 @@ use zban::{
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
 
-fn project(name: &str, files: &[(&str, &str)]) -> Project {
-    let root = temp_dir(name);
-    write_files(&root, &[(".zban/config.toml", CONFIG)]);
-    write_files(&root, files);
-    Project::open(&root).unwrap()
+fn project(files: &[(&str, &str)]) -> (TempDir, Project) {
+    let dir = temp_dir();
+    write_files(dir.path(), &[(".zban/config.toml", CONFIG)]);
+    write_files(dir.path(), files);
+    let project = Project::open(dir.path()).unwrap();
+    (dir, project)
 }
 
 fn load_one(project: &Project, id: &str) -> IssueFile {
@@ -62,9 +64,9 @@ fn rewrite_all(project: &Project) -> Vec<String> {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn repository_backlog_is_written_back_byte_identical() {
-    let root = temp_dir("repository-backlog");
-    copy_repository_backlog(&root);
-    let project = Project::open(&root).unwrap();
+    let dir = temp_dir();
+    copy_repository_backlog(dir.path());
+    let project = Project::open(dir.path()).unwrap();
     let files = project.load().unwrap();
     assert!(files.iter().any(|file| file.archived));
     assert!(files.iter().any(|file| !file.archived));
@@ -125,21 +127,18 @@ Duplicate.";
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn canonical_files_are_written_back_byte_identical() {
-    let project = project(
-        "canonical",
-        &[
-            (".zban/zb-n938cw.md", CANONICAL_FULL),
-            (
-                ".zban/zb-aaaaaa.md",
-                "---\ntitle: Empty body\nstatus: draft\ntype: epic\ncreated_at: 2026-11-11T20:00:00Z\n---\n",
-            ),
-            (
-                ".zban/zb-bbbbbb.md",
-                "---\ntitle: Body with leading blank lines and no final newline\nstatus: todo\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\n---\n\n\n\n---\nnot a header  \n\tindented",
-            ),
-            (".zban/archive/zb-cccccc.md", CANONICAL_CLOSED),
-        ],
-    );
+    let (_dir, project) = project(&[
+        (".zban/zb-n938cw.md", CANONICAL_FULL),
+        (
+            ".zban/zb-aaaaaa.md",
+            "---\ntitle: Empty body\nstatus: draft\ntype: epic\ncreated_at: 2026-11-11T20:00:00Z\n---\n",
+        ),
+        (
+            ".zban/zb-bbbbbb.md",
+            "---\ntitle: Body with leading blank lines and no final newline\nstatus: todo\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\n---\n\n\n\n---\nnot a header  \n\tindented",
+        ),
+        (".zban/archive/zb-cccccc.md", CANONICAL_CLOSED),
+    ]);
     assert_eq!(rewrite_all(&project), Vec::<String>::new());
 
     let full = load_one(&project, "zb-n938cw");
@@ -185,7 +184,7 @@ fn metadata_updates_keep_body_bytes_and_unknown_keys() {
         "\nLoad every issue.\n\n- [x] Read frontmatter\n- [ ] Preserve unknown keys\n",
         &format!("\n{body}"),
     );
-    let project = project("metadata-update", &[(".zban/zb-n938cw.md", &original)]);
+    let (_dir, project) = project(&[(".zban/zb-n938cw.md", &original)]);
     let file = load_one(&project, "zb-n938cw");
     let mut issue = file.issue.clone().unwrap();
     issue.title = "Parse and write issue files".into();
@@ -250,7 +249,7 @@ custom: value # kept with the key
 ---
 Body right after the header.
 ";
-    let project = project("hand-written", &[(".zban/zb-n938cw.md", hand_written)]);
+    let (_dir, project) = project(&[(".zban/zb-n938cw.md", hand_written)]);
     let file = load_one(&project, "zb-n938cw");
     let issue = file.issue.clone().unwrap();
     assert_eq!(issue.title, "Hand-written: header");
@@ -354,8 +353,7 @@ fn unknown_block_scalars_survive_an_update_in_indented_headers() {
             files.push((format!(".zban/{id}.md"), text, id, *unknown));
         }
     }
-    let project = project(
-        "indented-block-scalars",
+    let (_dir, project) = project(
         &files
             .iter()
             .map(|(path, text, ..)| (path.as_str(), text.as_str()))
@@ -385,7 +383,7 @@ fn unknown_block_scalars_survive_an_update_in_indented_headers() {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn titles_that_look_like_other_yaml_survive_a_write_and_a_read() {
-    let project = project("titles", &[]);
+    let (_dir, project) = project(&[]);
     let titles = [
         "123",
         "-1",
@@ -457,17 +455,14 @@ fn titles_that_look_like_other_yaml_survive_a_write_and_a_read() {
 #[test]
 fn blank_line_after_the_header_is_not_part_of_the_body() {
     let header = "---\ntitle: T\nstatus: todo\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\n---\n";
-    let project = project(
-        "blank-line",
-        &[
-            (".zban/zb-aaaaaa.md", &format!("{header}\nBody\n")),
-            (".zban/zb-bbbbbb.md", &format!("{header}\n\nBody\n")),
-            (".zban/zb-cccccc.md", &format!("{header}Body\n")),
-            (".zban/zb-dddddd.md", &format!("{header}\n")),
-            (".zban/zb-eeeeee.md", header),
-            (".zban/zb-ffffff.md", header.trim_end()),
-        ],
-    );
+    let (_dir, project) = project(&[
+        (".zban/zb-aaaaaa.md", &format!("{header}\nBody\n")),
+        (".zban/zb-bbbbbb.md", &format!("{header}\n\nBody\n")),
+        (".zban/zb-cccccc.md", &format!("{header}Body\n")),
+        (".zban/zb-dddddd.md", &format!("{header}\n")),
+        (".zban/zb-eeeeee.md", header),
+        (".zban/zb-ffffff.md", header.trim_end()),
+    ]);
     let body = |id: &str| load_one(&project, id).issue.unwrap().body;
     assert_eq!(body("zb-aaaaaa"), "Body\n");
     assert_eq!(body("zb-bbbbbb"), "\nBody\n");
@@ -512,7 +507,7 @@ fn values_outside_the_vocabulary_are_rejected() {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn create_and_update_reject_invalid_values_without_writing() {
-    let project = project("invalid-writes", &[]);
+    let (_dir, project) = project(&[]);
     let valid = Issue::new("Valid", timestamp("2026-11-11T20:00:00Z"));
     let created = project.create(&valid).unwrap();
     let before = fs::read(&created.path).unwrap();
@@ -718,7 +713,7 @@ fn loading_reports_each_broken_file_and_keeps_the_others() {
         .iter()
         .map(|(path, content)| (path.as_str(), content.as_str()))
         .collect();
-    let project = project("broken", &borrowed);
+    let (_dir, project) = project(&borrowed);
     fs::write(
         project.dir().join("zb-nnnnnn.md"),
         b"---\ntitle: \xff\nstatus: todo\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\n---\n",
@@ -760,7 +755,7 @@ fn loading_reports_each_broken_file_and_keeps_the_others() {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn concurrent_change_fails_with_conflict_and_survives() {
-    let project = project("conflict", &[]);
+    let (_dir, project) = project(&[]);
     let created = project
         .create(&Issue::new("Original", Timestamp::now()))
         .unwrap();
@@ -795,7 +790,7 @@ fn concurrent_change_fails_with_conflict_and_survives() {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn update_fails_with_conflict_when_another_run_replaced_the_file() {
-    let project = project("update-conflict", &[]);
+    let (_dir, project) = project(&[]);
     let created = project
         .create(&Issue::new("Raced", Timestamp::now()))
         .unwrap();
@@ -828,7 +823,7 @@ fn update_fails_with_conflict_when_another_run_replaced_the_file() {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn update_renames_a_new_file_over_the_issue() {
-    let project = project("atomic-replace", &[]);
+    let (_dir, project) = project(&[]);
     let created = project
         .create(&Issue::new("Original", Timestamp::now()))
         .unwrap();
@@ -863,7 +858,7 @@ fn update_renames_a_new_file_over_the_issue() {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn create_never_replaces_an_existing_file() {
-    let project = project("create-exclusive", &[]);
+    let (_dir, project) = project(&[]);
     let existing = project
         .create(&Issue::new("Existing", Timestamp::now()))
         .unwrap();

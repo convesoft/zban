@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 use std::process::Output;
 
 use common::mcp::Client;
-use common::{stderr, stdout, temp_dir, temp_dir_outside_projects, write_files, zban};
+use common::{stderr, stdout, temp_dir, write_files, zban};
 use serde_json::{Value, json};
+use tempfile::TempDir;
 use zban::{Id, IssueType, NotReady, Prefix, Priority, Status};
 
 /// The expected output of `zban prime`. Run the tests with
@@ -37,13 +38,16 @@ const SECTIONS: &[&str] = &[
     "## Reference",
 ];
 
-fn project(name: &str) -> PathBuf {
-    let root = temp_dir(&format!("prime-{name}"));
+/// A new project, in a directory that lasts as long as the returned
+/// [`TempDir`], and its root.
+fn project() -> (TempDir, PathBuf) {
+    let dir = temp_dir();
+    let root = dir.path().to_owned();
     write_files(
         &root,
         &[(".zban/config.toml", "format_version = 1\nprefix = \"zb\"\n")],
     );
-    root
+    (dir, root)
 }
 
 fn succeeded(output: &Output) -> String {
@@ -52,9 +56,10 @@ fn succeeded(output: &Output) -> String {
     stdout(output)
 }
 
-/// The guide as `zban prime` prints it inside a new project named `name`.
-fn guide(name: &str) -> String {
-    succeeded(&zban(&project(name), &["prime"]))
+/// The guide as `zban prime` prints it inside a new project.
+fn guide() -> String {
+    let (_dir, root) = project();
+    succeeded(&zban(&root, &["prime"]))
 }
 
 /// The instructions of an MCP server started in `dir` with `args`.
@@ -65,19 +70,21 @@ fn instructions(dir: &Path, args: &[&str]) -> String {
     instructions
 }
 
-/// The guide as the MCP server sends it inside a new project named `name`.
-fn mcp_guide(name: &str) -> String {
-    instructions(&project(&format!("mcp-{name}")), &[])
+/// The guide as the MCP server sends it inside a new project.
+fn mcp_guide() -> String {
+    let (_dir, root) = project();
+    instructions(&root, &[])
 }
 
 /// Both renderings of the guide.
-fn guides(name: &str) -> [String; 2] {
-    [guide(name), mcp_guide(name)]
+fn guides() -> [String; 2] {
+    [guide(), mcp_guide()]
 }
 
 /// The input schema of each tool, by name.
 fn tool_schemas() -> BTreeMap<String, Value> {
-    let mut client = Client::start(&project("mcp-tools"), &[]);
+    let (_dir, root) = project();
+    let mut client = Client::start(&root, &[]);
     client
         .tools()
         .into_iter()
@@ -248,7 +255,7 @@ fn options(invocation: &str) -> Vec<(String, Option<String>)> {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn prime_prints_the_guide_inside_a_project() {
-    let root = project("inside");
+    let (_dir, root) = project();
     let printed = succeeded(&zban(&root, &["prime"]));
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(SNAPSHOT);
     if std::env::var_os("ZBAN_UPDATE_SNAPSHOTS").is_some() {
@@ -271,23 +278,26 @@ fn prime_prints_the_guide_inside_a_project() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn prime_prints_nothing_outside_a_project() {
-    let outside = temp_dir_outside_projects("prime-outside");
-    let project = project("from-outside");
+    let outside = temp_dir();
+    let (_dir, project) = project();
 
-    let output = zban(&outside, &["prime"]);
+    let output = zban(outside.path(), &["prime"]);
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stdout(&output), "");
     assert_eq!(stderr(&output), "");
 
     let json: Value =
-        serde_json::from_str(&succeeded(&zban(&outside, &["prime", "--json"]))).unwrap();
+        serde_json::from_str(&succeeded(&zban(outside.path(), &["prime", "--json"]))).unwrap();
     assert_eq!(json, json!({ "guide": null }));
 
-    let expected = guide("outside-expected");
-    let directed = succeeded(&zban(&outside, &["prime", "-C", project.to_str().unwrap()]));
+    let expected = guide();
+    let directed = succeeded(&zban(
+        outside.path(),
+        &["prime", "-C", project.to_str().unwrap()],
+    ));
     assert_eq!(directed, expected);
     let json: Value = serde_json::from_str(&succeeded(&zban(
-        &outside,
+        outside.path(),
         &["-C", project.to_str().unwrap(), "prime", "--json"],
     )))
     .unwrap();
@@ -297,14 +307,12 @@ fn prime_prints_nothing_outside_a_project() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn prime_counts_a_project_with_an_invalid_configuration() {
-    let root = temp_dir("prime-invalid-config");
-    write_files(&root, &[(".zban/config.toml", "format_version = 99\n")]);
-    assert_eq!(
-        succeeded(&zban(&root, &["prime"])),
-        guide("invalid-config-expected")
-    );
+    let dir = temp_dir();
+    let root = dir.path();
+    write_files(root, &[(".zban/config.toml", "format_version = 99\n")]);
+    assert_eq!(succeeded(&zban(root, &["prime"])), guide());
 
-    let list = zban(&root, &["list"]);
+    let list = zban(root, &["list"]);
     assert_eq!(list.status.code(), Some(1));
     assert!(
         stderr(&list).contains("[invalid_config]"),
@@ -316,8 +324,8 @@ fn prime_counts_a_project_with_an_invalid_configuration() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn prime_fails_for_a_missing_directory() {
-    let outside = temp_dir_outside_projects("prime-missing");
-    let output = zban(&outside, &["prime", "--json", "-C", "missing"]);
+    let outside = temp_dir();
+    let output = zban(outside.path(), &["prime", "--json", "-C", "missing"]);
     assert_eq!(output.status.code(), Some(1));
     let json: Value = serde_json::from_str(&stdout(&output)).unwrap();
     assert_eq!(json["error"]["code"], "io");
@@ -326,7 +334,7 @@ fn prime_fails_for_a_missing_directory() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn guide_vocabulary_equals_the_code() {
-    for guide in guides("vocabulary") {
+    for guide in guides() {
         vocabulary_equals_the_code(&guide);
     }
 }
@@ -372,7 +380,7 @@ fn vocabulary_equals_the_code(guide: &str) {
 fn guide_names_only_commands_and_options_that_exist() {
     let commands = commands();
     let (mut invocations, mut options_checked) = (0, 0);
-    for invocation in code_spans(&guide("names")) {
+    for invocation in code_spans(&guide()) {
         let Some(rest) = invocation.strip_prefix("zban ") else {
             continue;
         };
@@ -412,7 +420,7 @@ fn guide_names_only_commands_and_options_that_exist() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn guide_lists_every_command_agents_use() {
-    let guide = guide("commands");
+    let guide = guide();
     let named: BTreeSet<_> = code_spans(&guide)
         .iter()
         .filter_map(|span| span.strip_prefix("zban "))
@@ -433,7 +441,7 @@ fn guide_lists_every_command_agents_use() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn guide_covers_its_sections_within_150_lines() {
-    for guide in guides("sections") {
+    for guide in guides() {
         let headings: Vec<_> = guide
             .lines()
             .filter(|line| line.starts_with("## "))
@@ -447,29 +455,32 @@ fn guide_covers_its_sections_within_150_lines() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn mcp_server_sends_the_guide_inside_a_project() {
-    let root = project("mcp-inside");
+    let (_dir, root) = project();
     let sent = instructions(&root, &[]);
     assert_snapshot(MCP_SNAPSHOT, &sent);
-    assert_ne!(sent, guide("mcp-inside-cli"), "rendered for MCP");
+    assert_ne!(sent, guide(), "rendered for MCP");
 
     write_files(&root, &[("src/deep/file.txt", "")]);
     assert_eq!(instructions(&root.join("src/deep"), &[]), sent);
-    let outside = temp_dir_outside_projects("mcp-guide-directed");
+    let outside = temp_dir();
     assert_eq!(
-        instructions(&outside, &["-C", root.to_str().unwrap()]),
+        instructions(outside.path(), &["-C", root.to_str().unwrap()]),
         sent
     );
 
-    let invalid = temp_dir("prime-mcp-invalid-config");
-    write_files(&invalid, &[(".zban/config.toml", "format_version = 99\n")]);
-    assert_eq!(instructions(&invalid, &[]), sent);
+    let invalid = temp_dir();
+    write_files(
+        invalid.path(),
+        &[(".zban/config.toml", "format_version = 99\n")],
+    );
+    assert_eq!(instructions(invalid.path(), &[]), sent);
 }
 
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn mcp_server_sends_a_short_note_outside_a_project() {
-    let outside = temp_dir_outside_projects("mcp-guide-outside");
-    let note = instructions(&outside, &[]);
+    let outside = temp_dir();
+    let note = instructions(outside.path(), &[]);
     assert!(note.contains("`directory`"), "{note}");
     assert!(note.contains("`zban prime -C <dir>`"), "{note}");
     assert!(note.contains(".zban/"), "{note}");
@@ -482,7 +493,7 @@ fn mcp_server_sends_a_short_note_outside_a_project() {
 fn guide_names_only_tools_and_parameters_that_exist() {
     let schemas = tool_schemas();
     let (mut calls, mut params_checked) = (0, 0);
-    for (tool, rest) in tool_spans(&mcp_guide("tool-names")) {
+    for (tool, rest) in tool_spans(&mcp_guide()) {
         let schema = schemas
             .get(&tool)
             .unwrap_or_else(|| panic!("`{tool}` is not a tool; zban has {:?}", schemas.keys()));
@@ -520,7 +531,7 @@ fn guide_names_only_tools_and_parameters_that_exist() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn guide_lists_every_tool_with_all_its_parameters() {
-    let guide = mcp_guide("tool-reference");
+    let guide = mcp_guide();
     let reference = guide.split("\n## Reference\n").nth(1).unwrap();
     let schemas = tool_schemas();
     for (tool, schema) in &schemas {
@@ -553,7 +564,7 @@ fn guide_lists_every_tool_with_all_its_parameters() {
 // @mara implements VER-AGENT-GUIDE
 #[test]
 fn guide_lists_every_option_of_each_command() {
-    let guide = guide("option-reference");
+    let guide = guide();
     let reference = guide.split("\n## Reference\n").nth(1).unwrap();
     for command in commands() {
         if SETUP_COMMANDS.contains(&command.as_str()) {
