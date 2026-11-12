@@ -2,6 +2,7 @@
 name = "zban"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.89"
 description = "A file-based issue tracker for you and your coding agents: Markdown issues in your repository, managed through a CLI and MCP server"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/convesoft/zban"

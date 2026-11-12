@@ -136,6 +136,19 @@ The YAML crate parses header values only. A thin text layer splits the header in
 Closing an issue while its checklist or children are unfinished hides that work. Open children of a closed parent silently drop out of the ready list ([[DES-READINESS]]). Cascading the close to the children would avoid that, but one command would then rewrite many files, could stop part-way, and would give every child the parent's reason, although some may be finished, moved elsewhere or still wanted. zban refuses such a close unless it is forced, and it never closes another issue implicitly. A forced close leaves the open children in place, and `zban check` warns about them. Closing `done` and `cancelled` is treated the same way; only unchecked task items are specific to `done`.
 :::
 
+:::mara decision ADR-WRITE-LOCK
+:mid: 01M77YZD0BXR4H9NYMR7CFMW6R
+:title: Lock the project directory only around each write
+:status: accepted
+:justifies: DES-SHARED-CORE
+
+Comparing a file's bytes just before renaming over it leaves a window between the comparison and the rename. The v0.1.0 review saw two `zban update` runs on one issue both pass the comparison, and the later rename dropped the earlier change while both reported success. zban therefore holds an exclusive advisory lock on the `.zban/` directory from each such comparison until the rename or deletion that follows, and while it moves a file between `.zban/` and the archive. The standard library's `File::lock` provides it on Linux and macOS without another dependency; it needs Rust 1.89, which the manifest declares as `rust-version`.
+
+A lock file was rejected: a crash can leave it behind and it can be committed by accident, whereas the operating system releases a lock on the directory when the process ends, even when it is killed. Holding the lock for a whole command is not needed: the byte comparison already reports stale reads as `conflict`, and a short lock keeps other zban processes from waiting while a command reads the project.
+
+The lock is not a claim: it covers one file operation, not an issue between commands, so the exclusion of claims and locking in [[ADR-SMALL-SCOPE]] stands. It coordinates zban processes that share one `.zban/` directory. Editors, Git and other worktrees do not take it. On a file system without advisory locks, taking the lock fails as unsupported, and zban then writes without it, guarded by the byte comparison alone as before; any other failure to take the lock fails the write with `io`.
+:::
+
 ## Risks
 
 :::mara risk RISK-DUPLICATE-WORK

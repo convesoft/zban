@@ -3,9 +3,10 @@
 //! Every write goes through a temporary file in the target directory that is
 //! renamed or linked into place, so an interrupted write never leaves a
 //! partial issue file (`REQ-PRESERVE-CONTENT`). Replacing a file first checks
-//! that it still holds the bytes that were read (`REQ-NO-LOST-UPDATES`).
+//! that it still holds the bytes that were read (`REQ-NO-LOST-UPDATES`), under
+//! a lock on `.zban/` that lasts until the file is replaced (`ADR-WRITE-LOCK`).
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
@@ -329,8 +330,10 @@ impl Project {
             // Keep the file's permissions; a failure here is not worth failing for.
             let _ = fs::set_permissions(&staged.path, metadata.permissions());
         }
-        unchanged(file)?;
-        staged.rename(&file.path)?;
+        self.locked(|| {
+            unchanged(file)?;
+            staged.rename(&file.path)
+        })?;
         Ok(self.file(file.path.clone(), file.archived, bytes))
     }
 
@@ -343,22 +346,24 @@ impl Project {
         let Some(issue) = &file.issue else {
             return Ok(file.clone());
         };
-        let Some(target) = self.destination(file, issue.status.is_closed())? else {
-            return Ok(file.clone());
-        };
-        if let Some(dir) = target.parent() {
-            fs::create_dir_all(dir).map_err(|error| Error::io(dir, &error))?;
-        }
-        if let Err(error) = fs::rename(&file.path, &target) {
-            if error.kind() == io::ErrorKind::NotFound && !file.path.exists() {
-                return Err(conflict(file, "was moved or deleted"));
+        self.locked(|| {
+            let Some(target) = self.destination(file, issue.status.is_closed())? else {
+                return Ok(file.clone());
+            };
+            if let Some(dir) = target.parent() {
+                fs::create_dir_all(dir).map_err(|error| Error::io(dir, &error))?;
             }
-            return Err(Error::io(&target, &error));
-        }
-        Ok(IssueFile {
-            path: target,
-            archived: !file.archived,
-            ..file.clone()
+            if let Err(error) = fs::rename(&file.path, &target) {
+                if error.kind() == io::ErrorKind::NotFound && !file.path.exists() {
+                    return Err(conflict(file, "was moved or deleted"));
+                }
+                return Err(Error::io(&target, &error));
+            }
+            Ok(IssueFile {
+                path: target,
+                archived: !file.archived,
+                ..file.clone()
+            })
         })
     }
 
@@ -411,9 +416,28 @@ impl Project {
                 ),
             ));
         }
-        unchanged(file)?;
-        fs::remove_file(&file.path).map_err(|error| Error::io(&file.path, &error))?;
+        self.locked(|| {
+            unchanged(file)?;
+            fs::remove_file(&file.path).map_err(|error| Error::io(&file.path, &error))
+        })?;
         Ok(file)
+    }
+
+    /// Runs `write` while holding an exclusive advisory lock on `.zban/`, so
+    /// that no other zban process replaces, moves or deletes an issue file
+    /// between the checks in `write` and its change (`ADR-WRITE-LOCK`). The
+    /// lock waits for another holder and is released when `write` returns.
+    /// Where the file system has no advisory locks, `write` runs unlocked.
+    // @mara implements DES-SHARED-CORE
+    fn locked<T>(&self, write: impl FnOnce() -> Result<T>) -> Result<T> {
+        let dir = self.dir();
+        let handle = File::open(&dir).map_err(|error| Error::io(&dir, &error))?;
+        if let Err(error) = handle.lock()
+            && !proceeds_unlocked(&error)
+        {
+            return Err(Error::io(&dir, &error));
+        }
+        write()
     }
 
     /// Renders an issue for writing, after checking that it is valid and
@@ -464,6 +488,32 @@ fn conflict(file: &IssueFile, what: &str) -> Error {
         ),
     )
 }
+
+/// Whether a write goes ahead without the lock after taking it failed with
+/// `error`: only when the file system has no advisory locks, which leaves the
+/// byte comparison as the only guard (`ADR-WRITE-LOCK`). Any other failure
+/// fails the write.
+fn proceeds_unlocked(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::Unsupported
+        || error
+            .raw_os_error()
+            .is_some_and(|code| LOCKING_UNSUPPORTED.contains(&code))
+}
+
+/// `ENOSYS`, `ENOTSUP` and `EOPNOTSUPP` on the platforms of
+/// `ADR-RUST-BINARY`, which the standard library may not report as
+/// `Unsupported`; it does not for macOS's `ENOTSUP`. Elsewhere only
+/// `Unsupported` counts.
+const LOCKING_UNSUPPORTED: &[i32] = if cfg!(target_vendor = "apple") {
+    &[78, 45, 102]
+} else if cfg!(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)) {
+    &[38, 95]
+} else {
+    &[]
+};
 
 /// Every `*.md` file is an issue, whatever its name.
 fn is_issue_file(path: &Path) -> bool {
@@ -647,5 +697,38 @@ mod tests {
             "{names:?}"
         );
         fs::remove_dir_all(project.root()).unwrap();
+    }
+
+    // @mara implements VER-ISSUE-FILES
+    #[test]
+    fn a_write_proceeds_unlocked_only_where_locking_is_unsupported() {
+        if cfg!(any(target_os = "linux", target_os = "macos"))
+            && cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+        {
+            assert!(!LOCKING_UNSUPPORTED.is_empty());
+        }
+        for &code in LOCKING_UNSUPPORTED {
+            let error = io::Error::from_raw_os_error(code);
+            // The operating system's own message confirms each number.
+            let message = error.to_string();
+            assert!(
+                message.contains("not supported") || message.contains("not implemented"),
+                "{code}: {message}"
+            );
+            assert!(proceeds_unlocked(&error), "{message}");
+        }
+        assert!(proceeds_unlocked(&io::ErrorKind::Unsupported.into()));
+
+        let failures = [
+            io::ErrorKind::PermissionDenied.into(),
+            io::ErrorKind::Interrupted.into(),
+            io::Error::other("lock failed"),
+            // EIO and EACCES, which have these numbers on Linux and macOS.
+            io::Error::from_raw_os_error(5),
+            io::Error::from_raw_os_error(13),
+        ];
+        for error in failures {
+            assert!(!proceeds_unlocked(&error), "{error}");
+        }
     }
 }
