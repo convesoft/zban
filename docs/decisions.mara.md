@@ -94,6 +94,18 @@ MCP gives agents typed tools and server instructions in clients that support the
 :justifies: DES-SHARED-CORE
 
 zban is written in Rust and ships as one self-contained binary. It is distributed through `cargo install zban` and prebuilt binaries on GitHub Releases; package-manager wrappers are not part of v1. The license is `MIT OR Apache-2.0`.
+
+v1 supports Linux and macOS on x86_64 and aarch64. Windows is deferred until there is a need for it, because it needs its own handling of atomic file replacement, CRLF line endings and paths.
+:::
+
+:::mara decision ADR-NO-CASCADE
+:mid: 01M76XFGSJ81ZR60CGYEMESP5K
+:title: Refuse to close unfinished work rather than cascade
+:status: accepted
+:justifies: REQ-CLOSE-CHECKLIST
+:justifies: DES-LIFECYCLE
+
+Closing an issue while its checklist or children are unfinished hides that work. Open children of a closed parent silently drop out of the ready list ([[DES-READINESS]]). Cascading the close to the children would avoid that, but one command would then rewrite many files, could stop part-way, and would give every child the parent's reason, although some may be finished, moved elsewhere or still wanted. zban refuses such a close unless it is forced, and it never closes another issue implicitly. A forced close leaves the open children in place, and `zban check` warns about them. Closing `done` and `cancelled` is treated the same way; only unchecked task items are specific to `done`.
 :::
 
 ## Risks

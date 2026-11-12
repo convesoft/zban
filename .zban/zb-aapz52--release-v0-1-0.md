@@ -12,7 +12,7 @@ created_at: 2026-11-11T21:00:10Z
 
 Distribution and licensing follow `ADR-RUST-BINARY`.
 
-- [ ] Decide the supported targets and record them in `ADR-RUST-BINARY`
+- [ ] Choose release target triples for the platforms in `ADR-RUST-BINARY`
 - [ ] Confirm the `zban` crate name is available
 - [ ] Add `LICENSE-MIT` and `LICENSE-APACHE`
 - [ ] Release workflow builds binaries and attaches them to a GitHub release

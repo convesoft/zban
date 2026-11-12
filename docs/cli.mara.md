@@ -8,7 +8,8 @@ and one JSON document with `--json`. Run `zban <command> --help` for full option
 ## Common tasks
 
 ```sh
-zban init                                   # create .zban/ in the current directory
+zban init                                   # create .zban/ here, with ID prefix zb
+zban init --prefix web                      # ... or with your own prefix
 zban create "Parse issue files" -t feature -p high --parent zb-9jra34
 zban create "Crash on empty title" -t bug --discovered-from zb-n938cw --body - < notes.md
 zban list --ready                           # what can be started now
@@ -87,12 +88,12 @@ The command line and the MCP server expose the same operations with the same val
 | `update <id>` | `-s`, `-t`, `-p`, `--title`, `--add-tag`/`--remove-tag`, `--parent ID`/`--no-parent`, `--add-blocked-by`/`--remove-blocked-by`, `--add-related`/`--remove-related`, `--discovered-from ID`/`--no-discovered-from`, `--body TEXT\|-`, `--append TEXT\|-`, `--replace-old TEXT --replace-new TEXT` (repeatable, applied in order), `--force` |
 | `delete <id>` | — |
 | `check` | `--fix` |
-| `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]) |
+| `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. |
 | `mcp` | Serves MCP over stdio ([[DES-MCP-TOOLS]]) |
 
-Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage.
+Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init` and `prime` fails with the error code `project_not_found` when no project is found. A concurrent change fails with `conflict` ([[REQ-NO-LOST-UPDATES]]).
 
-In JSON, an issue has `id`, `title`, `status`, `type`, `priority`, `tags`, `parent`, `blocked_by`, `related`, `discovered_from`, `created_at`, `closed_at`, `path`, `checklist` (`{checked, total}`), `ready` and `not_ready` (the reasons from [[DES-READINESS]]). `show` adds `body` and the reverse relations `children`, `blocks`, `related_from` and `discovered`. `list` returns `{"issues": [...]}` without bodies. Mutations return the resulting issue. `check` returns `{"findings": [{severity, code, path, message}]}`.
+In JSON, an issue has `id`, `title`, `status`, `type`, `priority`, `tags`, `parent`, `blocked_by`, `related`, `discovered_from`, `created_at`, `closed_at`, `path`, `checklist` (`{checked, total}`), `ready` and `not_ready` (the reasons from [[DES-READINESS]]). `show` adds `body` and the reverse relations `children`, `blocks`, `related_from` and `discovered`. `list` returns `{"issues": [...]}` without bodies, in the order defined by [[DES-READINESS]]. Mutations return the resulting issue. `check` returns `{"findings": [{severity, code, path, message}]}`.
 :::
 
 :::mara design DES-SHARED-CORE
@@ -101,6 +102,9 @@ In JSON, an issue has `id`, `title`, `status`, `type`, `priority`, `tags`, `pare
 :status: accepted
 :satisfies: REQ-SURFACE-PARITY
 :satisfies: REQ-PRESERVE-CONTENT
+:satisfies: REQ-NO-LOST-UPDATES
 
 The crate has a library holding the issue model, file store and operations (`init`, `create`, `list`, `show`, `update`, `delete`, `check` and `guide`), plus the `zban` binary. The CLI and MCP adapters only convert arguments into operation requests and operation results into output. Every operation reads the files fresh. There is no cache and no background process, so hand edits and branch switches are visible immediately, including to a running MCP server. Mutations validate the whole request against the loaded project before writing anything.
+
+Each mutation keeps the bytes of every issue file it read. Just before replacing a file, it reads the file again and fails with `conflict` if the bytes differ. New issue files are created with exclusive creation, so a create never replaces an existing file. This closes the window for lost updates to the moment between that comparison and the rename, without locks.
 :::

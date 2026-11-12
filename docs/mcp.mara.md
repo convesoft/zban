@@ -26,7 +26,8 @@ args = ["mcp"]
 ```
 
 The server uses the project found from its working directory. Pass `--root PATH`
-in `args` to pin a project.
+in `args` to pin a project. Outside a project the server still starts, but its
+tools report `project_not_found`.
 
 ## Requirement
 
@@ -58,5 +59,5 @@ in `args` to pin a project.
 | `delete_issue` | `delete` |
 | `check_issues` | `check`, with optional `fix` |
 
-Each tool result carries the JSON document the CLI prints with `--json`, both as structured content and as text. Failures are tool errors with the same error codes. The server's `instructions` are the agent guide rendered for MCP ([[DES-AGENT-GUIDE]]). v1 offers no resources or prompts, and no tool for `init`, which is a one-time human action.
+Each tool result carries the JSON document the CLI prints with `--json`, both as structured content and as text. Failures are tool errors with the same error codes. The server's `instructions` are the agent guide rendered for MCP ([[DES-AGENT-GUIDE]]). When no project is found, the server still starts and serves its instructions, and every tool fails with `project_not_found`. v1 offers no resources or prompts, and no tool for `init`, which is a one-time human action.
 :::

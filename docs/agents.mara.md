@@ -29,6 +29,9 @@ Or, in Claude Code, inject it automatically with hooks in `.claude/settings.json
 }
 ```
 
+`zban prime` prints nothing outside a zban project, so these hooks can also go in
+your user-level settings.
+
 Project-specific rules belong in your own `AGENTS.md`, for example "include the
 issue ID in commit messages as `Refs: zb-xxxxxx`". zban does not configure them.
 
@@ -62,8 +65,8 @@ The guide is one template compiled into the binary and kept under about 150 line
 
 1. **Track work in zban.** Use issues instead of ad-hoc todo lists.
 2. **Before starting.** Look for an existing issue, otherwise create one; set it `in-progress`.
-3. **While working.** Keep the body's checklist current. File newly discovered work as separate issues with `discovered_from` rather than widening the current one.
-4. **Finishing.** Add `## Summary of Changes` and set `done`. If unchecked items remain, finish them or move them into follow-up issues; force only when the user agrees. To abandon work, add `## Reasons for Cancelling` and set `cancelled`.
+3. **While working.** Keep the body's checklist current. File newly discovered work as separate issues with `discovered_from` rather than widening the current one. On a `conflict` error, show the issue again and retry.
+4. **Finishing.** Add `## Summary of Changes` and set `done`. If unchecked items or open children remain, finish them, close them or move them into follow-up issues; force only when the user agrees. To abandon work, add `## Reasons for Cancelling` and set `cancelled`.
 5. **Committing.** Commit issue files together with the code they describe.
 6. **Finding work.** Use the ready list and offer the top candidates; show an issue before starting it.
 7. **Reference.** Types, statuses, priorities, relations, the readiness rule, and the operations with their key options.
