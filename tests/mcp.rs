@@ -395,6 +395,18 @@ fn invalid_arguments_give_the_same_error_codes() {
             json!({"ready": "yes"}),
             "usage",
         ),
+        (
+            &["list", "--parent", "zb-zzzzzz"],
+            "list_issues",
+            json!({"parent": "zb-zzzzzz"}),
+            "not_found",
+        ),
+        (
+            &["list", "--parent", "nonsense"],
+            "list_issues",
+            json!({"parent": "nonsense"}),
+            "not_found",
+        ),
         (&["show"], "show_issues", json!({}), "usage"),
         (
             &["show", "zb-zzzzzz"],
@@ -426,6 +438,18 @@ fn invalid_arguments_give_the_same_error_codes() {
             "create_issue",
             json!({"title": "T", "parent": "zb-zzzzzz"}),
             "invalid_reference",
+        ),
+        (
+            &["create", "T", "-s", "done", "--body", "- [ ] Step"],
+            "create_issue",
+            json!({"title": "T", "status": "done", "body": "- [ ] Step"}),
+            "unchecked_items",
+        ),
+        (
+            &["create", "T", "--force"],
+            "create_issue",
+            json!({"title": "T", "force": true}),
+            "usage",
         ),
         (
             &["update", A, "--add-blocked-by", A],

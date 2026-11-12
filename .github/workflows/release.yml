@@ -59,9 +59,25 @@ jobs:
             exit 1
           fi
       - run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Run the binary
+      # Runs the main commands in a scratch project outside the checkout, so
+      # that zban cannot find this repository's own `.zban/`.
+      - name: Smoke-test the binary
         if: matrix.native
-        run: target/${{ matrix.target }}/release/zban --version
+        shell: bash
+        env:
+          ZBAN: ${{ github.workspace }}/target/${{ matrix.target }}/release/zban
+        run: |
+          "$ZBAN" --version
+          mkdir "$RUNNER_TEMP/smoke"
+          cd "$RUNNER_TEMP/smoke"
+          "$ZBAN" init
+          "$ZBAN" create "Smoke test" --type task --body "- [ ] Run zban"
+          id=$(basename .zban/*.md .md)
+          "$ZBAN" list | grep -F "$id"
+          "$ZBAN" update "$id" --replace-old "- [ ] Run zban" --replace-new "- [x] Run zban" --status done
+          test -f ".zban/archive/$id.md"
+          "$ZBAN" list --status done | grep -F "$id"
+          "$ZBAN" check
       - name: Package
         env:
           # Keeps macOS tar from adding AppleDouble `._` files.

@@ -18,18 +18,22 @@ use crate::guide::Surface;
 use crate::handoff::{self, Handoff};
 use crate::id::{Id, Prefix};
 use crate::issue::{Issue, IssueType, Priority, Severity, Status};
-use crate::lifecycle::Checklist;
+use crate::lifecycle::{self, Checklist};
 use crate::markdown::{joined, stored};
 use crate::relations::{Entry, Graph, IssueRef, NotReady};
 use crate::store::{IssueFile, Project};
 use crate::timestamp::Timestamp;
 
 /// The result of `init`.
+// @mara implements DES-CLI
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Initialized {
     /// The absolute path of the created `.zban/` directory.
     pub path: String,
     pub prefix: String,
+    /// The absolute path of the `.zban/` directory of the project that
+    /// encloses the new one, if any (`DES-PROJECT-LAYOUT`).
+    pub enclosing: Option<String>,
 }
 
 /// An issue as `list` returns it and as mutations return it.
@@ -193,10 +197,12 @@ pub fn init(directory: &Path, prefix: Option<&str>) -> Result<Initialized> {
     Ok(Initialized {
         path: project.dir().display().to_string(),
         prefix: project.prefix().to_string(),
+        enclosing: project.enclosing_dir().map(|dir| dir.display().to_string()),
     })
 }
 
-/// Creates an issue with the defaults of `DES-LIFECYCLE`.
+/// Creates an issue with the defaults and the closing rules of
+/// `DES-LIFECYCLE`, which a creation cannot force.
 pub fn create(project: &Project, request: &CreateRequest) -> Result<IssueView> {
     let prefix = project.prefix();
     let now = Timestamp::now();
@@ -214,6 +220,7 @@ pub fn create(project: &Project, request: &CreateRequest) -> Result<IssueView> {
         request.discovered_from.as_deref(),
     )?;
     issue.body = request.body.as_deref().map(stored).unwrap_or_default();
+    lifecycle::refuse_unfinished_creation(&issue)?;
     if issue.status.is_closed() {
         issue.closed_at = Some(now);
     }
@@ -230,24 +237,25 @@ pub fn list(project: &Project, request: &ListRequest) -> Result<Issues<ListedIss
     let statuses: Vec<Status> = parse_all(&request.statuses)?;
     let types: Vec<IssueType> = parse_all(&request.types)?;
     let priorities: Vec<Priority> = parse_all(&request.priorities)?;
-    // A value that is not an ID names no parent, so it matches nothing.
     let parent = request
         .parent
         .as_deref()
-        .map(|parent| Id::parse_input(project.prefix(), parent));
+        .map(|parent| named(project.prefix(), parent))
+        .transpose()?;
     let search = request.search.as_deref().map(str::to_lowercase);
     let files = project.load()?;
     let graph = Graph::new(&files);
+    // The parent is resolved as `show` resolves it (`DES-CLI`).
+    if let Some(parent) = &parent {
+        graph.resolve(parent)?;
+    }
     let matches = |issue: &Issue| {
         let status = if statuses.is_empty() {
             request.all || !issue.status.is_closed()
         } else {
             statuses.contains(&issue.status)
         };
-        let parent = match &parent {
-            None => true,
-            Some(parent) => parent.is_some() && issue.parent == *parent,
-        };
+        let parent = parent.is_none() || issue.parent == parent;
         let search = search.as_ref().is_none_or(|text| {
             issue.title.to_lowercase().contains(text) || issue.body.to_lowercase().contains(text)
         });

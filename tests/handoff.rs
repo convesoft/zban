@@ -218,6 +218,36 @@ fn a_handoff_heading_in_a_fenced_code_block_is_ignored() {
 
 // @mara implements VER-HANDOFF
 #[test]
+fn a_body_with_an_unclosed_fence_refuses_the_note() {
+    let body = "Example:\n\n```sh\necho open\n";
+    let root = project("unclosed", body);
+    for args in [
+        &["--handoff", "New"][..],
+        &["--title", "Renamed", "--handoff", "New"],
+    ] {
+        let args = [&["update", A], args].concat();
+        assert_eq!(refused(&root, &args), "invalid_handoff", "{args:?}");
+    }
+    assert_eq!(shown(&root, A)["handoff"], Value::Null);
+
+    // Once the body closes its fence, the note is written and read back.
+    ok(&root, &["update", A, "--append", "```"]);
+    let before = Timestamp::now();
+    ok(&root, &["update", A, "--handoff", "New"]);
+    let text = read(&root);
+    let time = written_at(&text, &before);
+    assert_eq!(
+        text,
+        format!("{HEADER}\n{body}\n```\n\n## Handoff ({time})\n\nNew\n")
+    );
+    assert_eq!(
+        shown(&root, A)["handoff"],
+        json!({"written_at": time, "text": "New\n"})
+    );
+}
+
+// @mara implements VER-HANDOFF
+#[test]
 fn several_handoff_sections_make_both_edits_fail() {
     let body = "## Handoff\n\nOne\n\n## Handoff (2026-01-01T00:00:00Z)\n\nTwo\n";
     let root = project("several", body);
