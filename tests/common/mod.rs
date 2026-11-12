@@ -3,8 +3,9 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 /// An empty directory for one test, under Cargo's temporary directory.
 pub fn temp_dir(name: &str) -> PathBuf {
@@ -61,6 +62,49 @@ pub fn zban(dir: &Path, args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("zban runs")
+}
+
+/// Runs the real `zban` binary in `dir` with `input` on standard input.
+pub fn zban_with_input(dir: &Path, args: &[&str], input: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_zban"))
+        .current_dir(dir)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("zban runs");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+/// Every file under `dir` with its content, by path relative to `dir`,
+/// leaving out the directories named in `skip`.
+pub fn snapshot(dir: &Path, skip: &[&str]) -> Vec<(PathBuf, Vec<u8>)> {
+    fn walk(base: &Path, dir: &Path, skip: &[&str], files: &mut Vec<(PathBuf, Vec<u8>)>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let relative = path.strip_prefix(base).unwrap().to_path_buf();
+            if entry.file_type().unwrap().is_dir() {
+                if !skip.iter().any(|skipped| relative == Path::new(skipped)) {
+                    files.push((relative, Vec::new()));
+                    walk(base, &path, skip, files);
+                }
+            } else {
+                files.push((relative, fs::read(&path).unwrap()));
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(dir, dir, skip, &mut files);
+    files.sort();
+    files
 }
 
 pub fn stderr(output: &Output) -> String {

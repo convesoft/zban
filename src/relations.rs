@@ -58,6 +58,12 @@ impl fmt::Display for NotReady {
     }
 }
 
+impl serde::Serialize for NotReady {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
 /// The relations that other issues hold to one issue, each in listing order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Reverse<'a> {

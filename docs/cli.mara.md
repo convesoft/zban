@@ -3,8 +3,8 @@
 `zban` is a single binary. Every command prints human-readable output by default
 and one JSON document with `--json`. Run `zban <command> --help` for full options.
 
-> zban is not fully implemented yet: only `zban init` works so far, without `--json`.
-> This page describes the agreed v1 interface.
+> `check`, `prime`, `mcp` and the handoff options are not implemented yet. This page
+> describes the agreed v1 interface.
 
 ## Common tasks
 
@@ -108,7 +108,7 @@ The command line and the MCP server expose the same operations with the same val
 | `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. With `--json` it prints `{"guide": "..."}`, with `null` outside a project. |
 | `mcp` | Serves MCP over stdio ([[DES-MCP-TOOLS]]). Takes no `--json`. |
 
-Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input.
+Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, then `--append`.
 
 Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init` and `prime` fails with `project_not_found` when no project is found. The error codes are:
 
@@ -133,7 +133,7 @@ Exit status is 0 on success, 1 when an operation fails or `check` finds errors, 
 | `conflict` | The file changed between reading and writing ([[REQ-NO-LOST-UPDATES]]) |
 | `io` | Any other file-system failure |
 
-In JSON, an issue has `id`, `title`, `status`, `type`, `priority`, `tags`, `parent`, `blocked_by`, `related`, `discovered_from`, `created_at`, `closed_at`, `path`, `checklist` (`{checked, total}`), `ready` and `not_ready` (the reasons from [[DES-READINESS]]). `show` adds `body`, `handoff` and the reverse relations `children`, `blocks`, `related_from` and `discovered`. `list` adds `handoff_at`. `list` returns `{"issues": [...], "warnings": [...]}` without bodies, in the order defined by [[DES-READINESS]], and `show` returns `{"issues": [...], "warnings": [...]}` in the order requested. Each warning is `{code, path, message}` with a code from [[DES-CHECK]], for a file skipped as unreadable or an ID present twice; human output prints warnings to standard error. Mutations return the resulting issue. `check` returns `{"findings": [{severity, code, path, message}]}`.
+In JSON, an issue has `id`, `title`, `status`, `type`, `priority`, `tags`, `parent`, `blocked_by`, `related`, `discovered_from`, `created_at`, `closed_at`, `path` (the absolute path of the file), `checklist` (`{checked, total}`), `ready` and `not_ready` (the reasons from [[DES-READINESS]]). `show` adds `body`, `handoff` and the reverse relations `children`, `blocks`, `related_from` and `discovered` as lists of IDs. `list` adds `handoff_at`. `list` returns `{"issues": [...], "warnings": [...]}` without bodies, in the order defined by [[DES-READINESS]], and `show` returns `{"issues": [...], "warnings": [...]}` in the order requested. Each warning is `{code, path, message}` with a code from [[DES-CHECK]], for a file skipped as unreadable or an ID present twice; human output prints warnings to standard error. Mutations return the resulting issue, and `delete` returns the issue as it was. `init` returns `{path, prefix}` with the absolute path of the new `.zban/`. `check` returns `{"findings": [{severity, code, path, message}]}`.
 :::
 
 :::mara design DES-SHARED-CORE

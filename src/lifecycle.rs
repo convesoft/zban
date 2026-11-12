@@ -10,7 +10,7 @@ use crate::timestamp::Timestamp;
 /// Checklist progress: the task items in a body and how many are checked.
 /// Items inside fenced code blocks do not count.
 // @mara implements DES-LIFECYCLE
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
 pub struct Checklist {
     pub checked: usize,
     pub total: usize,
