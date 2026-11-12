@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use common::{snapshot, stdout, temp_dir, write_files, zban};
 use serde_json::{Value, json};
+use tempfile::TempDir;
 use zban::Timestamp;
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
@@ -46,8 +47,11 @@ fn archived(id: &str) -> String {
     format!(".zban/archive/{id}.md")
 }
 
-fn fixture(name: &str) -> PathBuf {
-    let root = temp_dir(&format!("lifecycle-cli-{name}"));
+/// The project of the fixture IDs above, in a directory that lasts as long
+/// as the returned [`TempDir`], and its root.
+fn fixture() -> (TempDir, PathBuf) {
+    let dir = temp_dir();
+    let root = dir.path().to_owned();
     write_files(
         &root,
         &[
@@ -80,7 +84,7 @@ fn fixture(name: &str) -> PathBuf {
             ),
         ],
     );
-    root
+    (dir, root)
 }
 
 /// Runs zban with `--json` and returns the exit status and the one JSON
@@ -165,7 +169,7 @@ fn read(root: &Path, path: &str) -> String {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn closing_and_reopening_follow_the_rules_and_move_the_file() {
-    let root = fixture("close");
+    let (_dir, root) = fixture();
     let original = read(&root, &open(A));
     let child = read(&root, &open(D));
     let before = files(&root);
@@ -237,7 +241,7 @@ fn closing_and_reopening_follow_the_rules_and_move_the_file() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn creating_done_with_an_unchecked_item_fails_and_cannot_be_forced() {
-    let root = fixture("create-done");
+    let (_dir, root) = fixture();
     let before = files(&root);
 
     // The fenced example does not count, so one item is unchecked.
@@ -291,7 +295,7 @@ fn creating_done_with_an_unchecked_item_fails_and_cannot_be_forced() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn archived_issues_appear_everywhere_but_the_default_listing() {
-    let root = fixture("visible");
+    let (_dir, root) = fixture();
     ok(&root, &["update", A, "-s", "cancelled", "--force"]);
     assert!(root.join(archived(A)).is_file());
 
@@ -392,7 +396,7 @@ fn archived_issues_appear_everywhere_but_the_default_listing() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn listings_report_checklist_progress() {
-    let root = fixture("progress");
+    let (_dir, root) = fixture();
     let progress = |args: &[&str], id: &str| {
         in_listing(&ok(&root, &[&["list"], args].concat()), id)["checklist"].clone()
     };

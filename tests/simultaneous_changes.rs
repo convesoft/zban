@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use common::{stdout, temp_dir, zban};
 use serde_json::{Value, json};
+use tempfile::TempDir;
 
 /// Processes that update the issue at the same time.
 const WORKERS: usize = 8;
@@ -52,15 +53,15 @@ fn run(dir: &Path, args: &[&str]) -> Result<Value, String> {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn parallel_updates_of_one_issue_lose_none() {
-    let root = temp_dir("parallel-updates");
-    run(&root, &["init"]).unwrap();
-    let created = run(&root, &["create", "Shared"]).unwrap();
+    let dir = temp_dir();
+    let root = dir.path();
+    run(root, &["init"]).unwrap();
+    let created = run(root, &["create", "Shared"]).unwrap();
     let id = created["id"].as_str().unwrap();
 
     let appended: Vec<String> = thread::scope(|scope| {
         let workers: Vec<_> = (0..WORKERS)
             .map(|worker| {
-                let root = &root;
                 scope.spawn(move || {
                     let mut lines = Vec::new();
                     for update in 0..UPDATES {
@@ -85,7 +86,7 @@ fn parallel_updates_of_one_issue_lose_none() {
             .collect()
     });
 
-    let shown = run(&root, &["show", id]).unwrap();
+    let shown = run(root, &["show", id]).unwrap();
     let body = shown["issues"][0]["body"].as_str().unwrap();
     let lost: Vec<_> = appended
         .iter()
@@ -105,11 +106,11 @@ fn parallel_updates_of_one_issue_lose_none() {
 
 /// A new project in a directory private to this call, with one issue made by
 /// `zban create` with `create_args`. Returns the directory and the issue's ID.
-fn project_with(name: &str, create_args: &[&str]) -> (PathBuf, String) {
-    let root = temp_dir(name);
-    run(&root, &["init"]).unwrap();
-    let created = run(&root, &[&["create"], create_args].concat()).unwrap();
-    (root, created["id"].as_str().unwrap().to_owned())
+fn project_with(create_args: &[&str]) -> (TempDir, String) {
+    let dir = temp_dir();
+    run(dir.path(), &["init"]).unwrap();
+    let created = run(dir.path(), &[&["create"], create_args].concat()).unwrap();
+    (dir, created["id"].as_str().unwrap().to_owned())
 }
 
 /// Takes the lock on `.zban/` in `root` with `lock`: `File::lock` as a zban
@@ -148,13 +149,13 @@ fn assert_wait(mut running: Vec<(String, File, Child)>) {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn replacing_moving_and_deleting_wait_for_the_lock() {
-    let (updating, updated) = project_with("lock-update", &["Updated"]);
-    let (deleting, deleted) = project_with("lock-delete", &["Deleted"]);
+    let (updating, updated) = project_with(&["Updated"]);
+    let (deleting, deleted) = project_with(&["Deleted"]);
     // A closed issue left in `.zban/`, as an interrupted close leaves it.
-    let (moving, closed) = project_with("lock-move", &["Closed", "--status", "done"]);
+    let (moving, closed) = project_with(&["Closed", "--status", "done"]);
     let name = format!("{closed}.md");
-    let archived = moving.join(".zban/archive").join(&name);
-    fs::rename(&archived, moving.join(".zban").join(&name)).unwrap();
+    let archived = moving.path().join(".zban/archive").join(&name);
+    fs::rename(&archived, moving.path().join(".zban").join(&name)).unwrap();
 
     // A shared lock, as another process's listing holds, lets each
     // command's own listing through, so each waits in its write. One project
@@ -163,36 +164,39 @@ fn replacing_moving_and_deleting_wait_for_the_lock() {
     let shared = File::lock_shared;
     assert_wait(vec![
         start_while_locked(
-            &updating,
+            updating.path(),
             shared,
             &["update", &updated, "--append", "Waited"],
         ),
-        start_while_locked(&deleting, shared, &["delete", &deleted]),
-        start_while_locked(&moving, shared, &["check", "--fix"]),
+        start_while_locked(deleting.path(), shared, &["delete", &deleted]),
+        start_while_locked(moving.path(), shared, &["check", "--fix"]),
     ]);
 
-    let shown = run(&updating, &["show", &updated]).unwrap();
+    let shown = run(updating.path(), &["show", &updated]).unwrap();
     let body = shown["issues"][0]["body"].as_str().unwrap();
     assert!(body.contains("Waited"), "{body}");
-    assert_eq!(run(&deleting, &["show", &deleted]), Err("not_found".into()));
+    assert_eq!(
+        run(deleting.path(), &["show", &deleted]),
+        Err("not_found".into())
+    );
     assert!(archived.exists());
 }
 
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn reads_wait_for_a_write_but_not_for_another_read() {
-    let (showing, shown) = project_with("lock-show", &["Shown"]);
-    let (listing, _) = project_with("lock-list", &["Listed"]);
+    let (showing, shown) = project_with(&["Shown"]);
+    let (listing, _) = project_with(&["Listed"]);
     // One project each, because two exclusive locks of this process on one
     // directory would wait for each other.
     assert_wait(vec![
-        start_while_locked(&showing, File::lock, &["show", &shown]),
-        start_while_locked(&listing, File::lock, &["list"]),
+        start_while_locked(showing.path(), File::lock, &["show", &shown]),
+        start_while_locked(listing.path(), File::lock, &["list"]),
     ]);
 
     for (root, args) in [
-        (&showing, &["show", shown.as_str()][..]),
-        (&listing, &["list"]),
+        (showing.path(), &["show", shown.as_str()][..]),
+        (listing.path(), &["list"]),
     ] {
         let started = Instant::now();
         let (command, _held, mut child) = start_while_locked(root, File::lock_shared, args);
@@ -279,13 +283,14 @@ fn assert_reads_find_issue(
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn reads_see_an_issue_that_another_process_replaces() {
-    let (root, id) = project_with("read-while-replaced", &["Replaced"]);
+    let (fixture, id) = project_with(&["Replaced"]);
+    let root = fixture.path();
     let dir = root.join(".zban");
     let path = dir.join(format!("{id}.md"));
     let bytes = fs::read(&path).unwrap();
     // Renames a copy of the issue over it.
-    let replacements = assert_reads_find_issue(&root, &id, READS, || {
-        rename_locked(&root, &staged(&dir, &bytes), &path)
+    let replacements = assert_reads_find_issue(root, &id, READS, || {
+        rename_locked(root, &staged(&dir, &bytes), &path)
     });
     assert!(replacements > 0);
 }
@@ -293,13 +298,14 @@ fn reads_see_an_issue_that_another_process_replaces() {
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn reads_see_an_issue_that_another_process_closes_and_reopens() {
-    let (root, id) = project_with("read-while-moved", &["Moved"]);
+    let (fixture, id) = project_with(&["Moved"]);
+    let root = fixture.path();
     let name = format!("{id}.md");
     let (open_dir, closed_dir) = (root.join(".zban"), root.join(".zban/archive"));
     let open = fs::read(open_dir.join(&name)).unwrap();
-    run(&root, &["update", &id, "--status", "done"]).unwrap();
+    run(root, &["update", &id, "--status", "done"]).unwrap();
     let closed = fs::read(closed_dir.join(&name)).unwrap();
-    run(&root, &["update", &id, "--status", "todo"]).unwrap();
+    run(root, &["update", &id, "--status", "todo"]).unwrap();
     // Closes and then reopens the issue as `zban update` does: rewrites the
     // file in place, then moves it into the other directory, each step under
     // the lock.
@@ -307,11 +313,11 @@ fn reads_see_an_issue_that_another_process_closes_and_reopens() {
         (&open_dir, &closed, &closed_dir),
         (&closed_dir, &open, &open_dir),
     ];
-    let cycles = assert_reads_find_issue(&root, &id, MOVE_READS, || {
+    let cycles = assert_reads_find_issue(root, &id, MOVE_READS, || {
         for (from, bytes, to) in steps {
             let path = from.join(&name);
-            rename_locked(&root, &staged(from, bytes), &path);
-            rename_locked(&root, &path, &to.join(&name));
+            rename_locked(root, &staged(from, bytes), &path);
+            rename_locked(root, &path, &to.join(&name));
         }
     });
     assert!(cycles > 0);

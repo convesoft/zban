@@ -128,6 +128,8 @@ Each release archive holds the binary, the README, zban's two license files and 
 zban needs argument parsing, JSON, a YAML parser for issue headers, an MCP server and graph checks over relations. Writing these by hand keeps the dependency tree small, but spends effort on parser and protocol details that maintained crates already handle, and hand-written protocol code tends to lag behind MCP revisions. zban builds on established crates: `clap` for arguments, `serde` and `serde_json` for JSON, `saphyr-parser` for YAML, whose parse events expose enough detail to reject anchors, aliases, tags and duplicate keys, the official MCP Rust SDK `rmcp` for the server, `petgraph` for cycle and reachability checks over `parent` and `blocked_by`, and `getrandom` for IDs.
 
 The YAML crate parses header values only. A thin text layer splits the header into top-level entries, so unknown keys are kept verbatim and known keys are written in the canonical form of [[DES-ISSUE-FILE]] without a generic YAML serializer. The two keys of `config.toml` are read by a small parser in zban rather than a TOML crate. `rmcp` needs the `tokio` runtime; only `zban mcp` starts it, and the core library stays synchronous. The costs are a larger binary and dependency tree. Adding a runtime dependency beyond these needs a recorded decision.
+
+The tests have one dependency of their own, `tempfile`, which is not built into the binary. Each test builds a fresh fixture project in a `TempDir`: a directory with a random name under the system's temporary directory, owned by the test and deleted when it ends. No two tests share a directory, even under a runner that starts one process per test, and no fixture lies inside this repository, whose own `.zban/` a test would otherwise find.
 :::
 
 :::mara decision ADR-NO-CASCADE
@@ -153,6 +155,25 @@ Reads take the same lock, shared, from listing `.zban/` and `.zban/archive/` unt
 A lock file was rejected: a crash can leave it behind and it can be committed by accident, whereas the operating system releases a lock on the directory when the process ends, even when it is killed. Holding the lock for a whole command is not needed: the byte comparison already reports stale reads as `conflict`, and short locks keep other zban processes from waiting while a command parses the files and prepares its change.
 
 The lock is not a claim: it covers one file operation or one read of the files, not an issue between commands, so the exclusion of claims and locking in [[ADR-SMALL-SCOPE]] stands. It coordinates zban processes that share one `.zban/` directory. Editors, Git and other worktrees do not take it. On a file system without advisory locks, taking the lock fails as unsupported, and zban then writes or reads without it, a write guarded by the byte comparison alone as before; any other failure to take the lock fails the command with `io`.
+:::
+
+:::mara decision ADR-CREATE-WITHOUT-HARD-LINKS
+:mid: 01M785TJ0TQG6K5K6WJS3G8GBE
+:title: Create issue files by renaming where hard links are unsupported
+:status: accepted
+:justifies: DES-SHARED-CORE
+:justifies: REQ-NO-LOST-UPDATES
+
+`init` and `create` write a temporary file and then hard-link it to its name, so that the write is atomic ([[REQ-PRESERVE-CONTENT]]) and a create fails rather than replacing an existing file. Some file systems have no hard links. On Linux, linking then fails with `EPERM`, which `link(2)` documents for a file system that "does not support the creation of hard links"; FAT and exFAT drives and many FUSE mounts are such file systems. On macOS, `linkat(2)` documents `ENOTSUP` for a file system that "does not support this call". With zban 0.1.0 on an `rclone mount` of a local directory, mounted by an ordinary user, `init` and every `create`, open or closed, failed with `io` and "Operation not permitted (os error 1)". `update`, closing, reopening and `delete`, which rename or remove files, worked, and so did advisory locks.
+
+zban keeps the hard link. When linking fails with `EPERM` on Linux, or as unsupported (`Unsupported`, or the raw errors `ENOSYS`, `ENOTSUP` and `EOPNOTSUPP`, as for the lock of [[ADR-WRITE-LOCK]]), `init` and `create` instead take the exclusive lock, check that the name is unused, for an issue in both `.zban/` and the archive, and rename the temporary file to it, as closing and reopening already move a file. Any other failure to link fails with `io`. Writes stay atomic, and an interrupted create leaves only a temporary file. File systems with hard links keep the absolute guarantee that a create never replaces a file. On the others, no other zban process can take the name between the check and the rename, but a writer that does not take the lock can: an editor, Git, or zban on a file system that has no advisory locks either. It would have to create the same freshly drawn random ID, one of 2^30 values that neither directory held an instant before, in that instant. [[ADR-WRITE-LOCK]] accepts the same caveat for replacing and moving a file. Falling back on an `EPERM` with another cause is harmless: each such cause that can apply to a file zban has just created also makes the rename fail, so the command fails with `io` as before.
+
+The rejected alternatives:
+
+- **Keep hard links only.** Name the missing support in the `io` message and document that zban needs hard links. No promise changes, but zban cannot create issues on these file systems.
+- **Create the issue file exclusively.** Open the issue's name with exclusive creation, then write and sync it. A create still never replaces a file, but an interrupted create leaves an empty or partial issue file, which breaks [[REQ-PRESERVE-CONTENT]]. `check` would report it as unreadable, and `check --fix` could not tell it from a damaged hand edit. A read during the write would see the partial file unless the write held the lock.
+- **Rename without replacing.** `renameat2` with `RENAME_NOREPLACE` on Linux and `renamex_np` with `RENAME_EXCL` on macOS are atomic and never replace. The standard library offers neither, so they need a new dependency ([[ADR-DEPENDENCIES]]), and FUSE mounts support them only when their server does, so another fallback would still be needed.
+- **Always check, then rename.** Dropping the hard link would remove one code path, but every file system would then carry the caveat above.
 :::
 
 ## Risks

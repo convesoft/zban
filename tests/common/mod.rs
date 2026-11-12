@@ -2,43 +2,26 @@
 
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::Mutex;
 
-/// An empty directory under Cargo's temporary directory, private to this
-/// call.
-pub fn temp_dir(name: &str) -> PathBuf {
-    new_dir(Path::new(env!("CARGO_TARGET_TMPDIR")).join(unique(name)))
-}
+use tempfile::TempDir;
 
-/// An empty directory outside any project, under the system's temporary
-/// directory, private to this call. Cargo's temporary directory lies inside
-/// this repository, whose own `.zban/` would be found from there.
-pub fn temp_dir_outside_projects(name: &str) -> PathBuf {
-    let name = format!("zban-test-{}-{}", unique(name), std::process::id());
-    new_dir(std::env::temp_dir().join(name))
-}
-
-/// `name` with a number that differs on each call with the same name. Tests
-/// run in parallel, and a directory that two of them share can be deleted
-/// while one is still using it.
-fn unique(name: &str) -> String {
-    static CALLS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
-    let mut calls = CALLS.lock().unwrap();
-    let call = calls.entry(name.to_owned()).or_default();
-    *call += 1;
-    format!("{name}-{call}")
-}
-
-/// Empties or creates `dir`.
-fn new_dir(dir: PathBuf) -> PathBuf {
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
+/// A fresh empty directory with a random name, for one test only: the test
+/// builds its fixture project in it. It lies under the system's temporary
+/// directory, outside any project, and its path is canonical like the
+/// absolute paths zban prints (on macOS the temporary directory is reached
+/// through a symbolic link). Dropping it deletes the directory, so a test
+/// creates it before it starts any `zban` process there, such as an MCP
+/// client, which then ends first.
+pub fn temp_dir() -> TempDir {
+    let base = fs::canonicalize(std::env::temp_dir()).unwrap();
+    tempfile::Builder::new()
+        .prefix("zban-test-")
+        .tempdir_in(base)
+        .unwrap()
 }
 
 /// Copies this repository's `.zban/` into `root`.
