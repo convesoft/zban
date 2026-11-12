@@ -27,26 +27,24 @@ env:
 
 jobs:
   build:
-    name: Build (${{ matrix.target }})
+    name: Build (${{ join(matrix.targets, ', ') }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux builds natively on each architecture. Apple silicon runners
-          # build both macOS targets, cross-compiling for x86_64.
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-24.04
-            native: true
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-24.04-arm
-            native: true
-          - target: x86_64-apple-darwin
-            os: macos-15
-            native: false
-          - target: aarch64-apple-darwin
-            os: macos-15
-            native: true
+          # Each entry builds its targets one after the other on one runner, and
+          # the first target is the runner's own. Linux builds natively on each
+          # architecture. macOS runners are scarce, so one Apple silicon runner
+          # builds both macOS targets, cross-compiling for x86_64.
+          - os: ubuntu-24.04
+            targets: [x86_64-unknown-linux-musl]
+          - os: ubuntu-24.04-arm
+            targets: [aarch64-unknown-linux-musl]
+          - os: macos-15
+            targets: [aarch64-apple-darwin, x86_64-apple-darwin]
     runs-on: ${{ matrix.os }}
+    env:
+      TARGETS: ${{ join(matrix.targets, ' ') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,7 +52,7 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ join(matrix.targets, ',') }}
       - name: Check that the tag names the package version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -71,62 +69,82 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME points at $(git rev-parse HEAD), which is not on main"
             exit 1
           fi
-      - run: cargo build --release --locked --target ${{ matrix.target }}
-      # Runs the test suite on the commit being released, for each target it
-      # ships whose binary the runner can run: the cross-compiled entry shares
-      # its runner with a native one.
-      - name: Test
-        if: matrix.native
-        run: cargo test --locked --target ${{ matrix.target }}
-      # Runs the main commands in a scratch project outside the checkout, so
-      # that zban cannot find this repository's own `.zban/`.
-      - name: Smoke-test the binary
-        if: matrix.native
-        shell: bash
-        env:
-          ZBAN: ${{ github.workspace }}/target/${{ matrix.target }}/release/zban
+      - name: Build
         run: |
-          "$ZBAN" --version
-          mkdir "$RUNNER_TEMP/smoke"
-          cd "$RUNNER_TEMP/smoke"
-          "$ZBAN" init
-          "$ZBAN" create "Smoke test" --type task --body "- [ ] Run zban"
-          id=$(basename .zban/*.md .md)
-          "$ZBAN" list | grep -F "$id"
-          "$ZBAN" update "$id" --replace-old "- [ ] Run zban" --replace-new "- [x] Run zban" --status done
-          test -f ".zban/archive/$id.md"
-          "$ZBAN" list --status done | grep -F "$id"
-          "$ZBAN" check
-      # Writes the licenses of the crates compiled into zban, from about.toml and
-      # about.hbs. cargo-about is not cached: a tag run cannot restore the caches
-      # of pull request runs, and a release should not ship notices written by a
+          for target in $TARGETS; do
+            cargo build --release --locked --target "$target"
+          done
+      # Runs the test suite on the commit being released, for the target the
+      # runner runs natively: the first of its entry.
+      - name: Test
+        run: cargo test --locked --target ${{ matrix.targets[0] }}
+      # Runs the main commands in a scratch project outside the checkout, so
+      # that zban cannot find this repository's own `.zban/`. The Apple silicon
+      # runner runs the x86_64 binary under Rosetta 2, which the image has. If
+      # Rosetta is missing and cannot be installed, that binary is not
+      # smoke-tested, rather than failing the release.
+      - name: Smoke-test the binaries
+        shell: bash
+        run: |
+          for target in $TARGETS; do
+            if [ "$target" = x86_64-apple-darwin ] && ! arch -x86_64 /usr/bin/true; then
+              sudo softwareupdate --install-rosetta --agree-to-license || true
+              if ! arch -x86_64 /usr/bin/true; then
+                echo "::warning::Rosetta 2 is unavailable, so $target is not smoke-tested"
+                continue
+              fi
+            fi
+            zban="$GITHUB_WORKSPACE/target/$target/release/zban"
+            "$zban" --version
+            mkdir "$RUNNER_TEMP/smoke-$target"
+            (
+              cd "$RUNNER_TEMP/smoke-$target"
+              "$zban" init
+              "$zban" create "Smoke test" --type task --body "- [ ] Run zban"
+              id=$(basename .zban/*.md .md)
+              "$zban" list | grep -F "$id"
+              "$zban" update "$id" --replace-old "- [ ] Run zban" --replace-new "- [x] Run zban" --status done
+              test -f ".zban/archive/$id.md"
+              "$zban" list --status done | grep -F "$id"
+              "$zban" check
+            )
+          done
+      # Writes the licenses of the crates compiled into zban for each target,
+      # from about.toml and about.hbs, into the directory its archive is packed
+      # from. cargo-about is not cached: a tag run cannot restore the caches of
+      # pull request runs, and a release should not ship notices written by a
       # binary restored from a cache.
       - name: Write the third-party licenses
         shell: bash
         run: |
           cargo install --locked cargo-about --version 0.9.3 --features cli
-          cargo about generate --locked --fail --target ${{ matrix.target }} \
-            --output-file THIRD-PARTY-LICENSES about.hbs 2>&1 | tee "$RUNNER_TEMP/cargo-about.log"
-          # A license file that no longer matches its checksum in about.toml
-          # only draws a warning, and its crate gets the license's generic text.
-          if grep -F WARN "$RUNNER_TEMP/cargo-about.log"; then
-            echo "::error::cargo-about warned about a license; review about.toml"
-            exit 1
-          fi
+          for target in $TARGETS; do
+            mkdir -p "$RUNNER_TEMP/zban-$target"
+            cargo about generate --locked --fail --target "$target" \
+              --output-file "$RUNNER_TEMP/zban-$target/THIRD-PARTY-LICENSES" about.hbs 2>&1 | tee "$RUNNER_TEMP/cargo-about-$target.log"
+            # A license file that no longer matches its checksum in about.toml
+            # only draws a warning, and its crate gets the license's generic text.
+            if grep -F WARN "$RUNNER_TEMP/cargo-about-$target.log"; then
+              echo "::error::cargo-about warned about a license for $target; review about.toml"
+              exit 1
+            fi
+          done
       - name: Package
         env:
           # Keeps macOS tar from adding AppleDouble `._` files.
           COPYFILE_DISABLE: 1
         run: |
-          staging="$RUNNER_TEMP/zban-${{ matrix.target }}"
-          mkdir -p "$staging" dist
-          cp target/${{ matrix.target }}/release/zban README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES "$staging"
-          tar -czf dist/zban-${{ matrix.target }}.tar.gz -C "$staging" zban README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES
-          tar -tzf dist/zban-${{ matrix.target }}.tar.gz | grep -Fx THIRD-PARTY-LICENSES
+          mkdir dist
+          for target in $TARGETS; do
+            staging="$RUNNER_TEMP/zban-$target"
+            cp "target/$target/release/zban" README.md LICENSE-MIT LICENSE-APACHE "$staging"
+            tar -czf "dist/zban-$target.tar.gz" -C "$staging" zban README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES
+            tar -tzf "dist/zban-$target.tar.gz" | grep -Fx THIRD-PARTY-LICENSES
+          done
       - uses: actions/upload-artifact@v7
         with:
-          name: zban-${{ matrix.target }}
-          path: dist/zban-${{ matrix.target }}.tar.gz
+          name: zban-${{ matrix.os }}
+          path: dist/zban-*.tar.gz
           if-no-files-found: error
 
   release:
