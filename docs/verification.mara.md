@@ -60,7 +60,7 @@ The fixture contains: A blocking B; an independent C; an epic E; a child D whose
 :verifies: REQ-CLOSE-CHECKLIST
 :verifies: REQ-AUTO-ARCHIVE
 
-Setting `done` with an unchecked task item fails and changes nothing. With force it succeeds. A task item inside a fenced code block does not count. Setting `done` or `cancelled` on an issue with an open child fails, names the child and changes nothing. With force it succeeds and leaves the child unchanged. Closing sets `closed_at` and moves the file to `.zban/archive/`, and reopening clears `closed_at` and moves it back. Archived issues appear in `show`, in search, in relations and in `list --all`, but not in the default listing. Listings report checklist progress.
+Setting `done` with an unchecked task item fails and changes nothing. With force it succeeds. Creating an issue as `done` with an unchecked task item fails with the same code and creates no file, through the command line and MCP alike, and `create` accepts no force. A task item inside a fenced code block does not count. Setting `done` or `cancelled` on an issue with an open child fails, names the child and changes nothing. With force it succeeds and leaves the child unchanged. Closing sets `closed_at` and moves the file to `.zban/archive/`, and reopening clears `closed_at` and moves it back. Archived issues appear in `show`, in search, in relations and in `list --all`, but not in the default listing. Listings report checklist progress.
 :::
 
 :::mara verification VER-HANDOFF

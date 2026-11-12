@@ -440,6 +440,18 @@ fn invalid_arguments_give_the_same_error_codes() {
             "invalid_reference",
         ),
         (
+            &["create", "T", "-s", "done", "--body", "- [ ] Step"],
+            "create_issue",
+            json!({"title": "T", "status": "done", "body": "- [ ] Step"}),
+            "unchecked_items",
+        ),
+        (
+            &["create", "T", "--force"],
+            "create_issue",
+            json!({"title": "T", "force": true}),
+            "usage",
+        ),
+        (
             &["update", A, "--add-blocked-by", A],
             "update_issue",
             json!({"id": A, "add_blocked_by": [A]}),
