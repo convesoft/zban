@@ -25,11 +25,15 @@ use crate::store::{IssueFile, Project};
 use crate::timestamp::Timestamp;
 
 /// The result of `init`.
+// @mara implements DES-CLI
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Initialized {
     /// The absolute path of the created `.zban/` directory.
     pub path: String,
     pub prefix: String,
+    /// The absolute path of the `.zban/` directory of the project that
+    /// encloses the new one, if any (`DES-PROJECT-LAYOUT`).
+    pub enclosing: Option<String>,
 }
 
 /// An issue as `list` returns it and as mutations return it.
@@ -193,6 +197,7 @@ pub fn init(directory: &Path, prefix: Option<&str>) -> Result<Initialized> {
     Ok(Initialized {
         path: project.dir().display().to_string(),
         prefix: project.prefix().to_string(),
+        enclosing: project.enclosing_dir().map(|dir| dir.display().to_string()),
     })
 }
 
