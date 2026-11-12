@@ -50,8 +50,9 @@ crates.io or other package managers.
 
 ### Prebuilt binary
 
-Each release attaches one archive per platform, holding the `zban` binary, this
-README and the license files, and a `SHA256SUMS` file:
+Each release attaches a `SHA256SUMS` file and one archive per platform. An
+archive holds the `zban` binary, this README, zban's license files and
+`THIRD-PARTY-LICENSES`, the licenses of the Rust crates built into the binary:
 
 | Platform | Archive |
 | --- | --- |

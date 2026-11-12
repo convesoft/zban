@@ -1,6 +1,6 @@
 ---
 title: Decide how release archives ship third-party license notices
-status: draft
+status: in-progress
 type: task
 discovered_from: zb-zqn4z3
 created_at: 2026-11-12T15:25:56Z
@@ -22,6 +22,6 @@ Option 1. It is the only option that ships correct notices without manual upkeep
 
 ## Tasks once decided
 
-- [ ] Record the chosen option in `ADR-RUST-BINARY`
-- [ ] Ship the notices as decided, and list them with the archive contents in the README
+- [x] Record the chosen option in `ADR-RUST-BINARY`
+- [x] Ship the notices as decided, and list them with the archive contents in the README
 - [ ] Check that an archive from a build-only run of `release.yml` holds notices for every crate compiled into the binary

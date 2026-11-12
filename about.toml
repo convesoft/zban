@@ -1,0 +1,35 @@
+# cargo-about writes the THIRD-PARTY-LICENSES file of each release archive from
+# Cargo.lock, using this file and about.hbs (ADR-RUST-BINARY). Only the release
+# workflow runs it.
+
+# The licenses the crates in Cargo.lock may use, preferred first. A crate under
+# any other license fails the release until the license is reviewed and added.
+accepted = ["MIT", "Apache-2.0", "Zlib", "Unicode-3.0"]
+# Leaves out zban itself, whose licenses ship as LICENSE-MIT and LICENSE-APACHE.
+private = { ignore = true }
+# Takes the MIT text out of chrono's combined license file.
+workarounds = ["chrono"]
+
+# rmcp's license file adds a note on its move from MIT to Apache-2.0 and the
+# MIT text of contributions that are not yet relicensed, so ship it verbatim.
+[rmcp.clarify]
+license = "Apache-2.0"
+
+[[rmcp.clarify.files]]
+path = "LICENSE"
+checksum = "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a"
+
+# saphyr-parser keeps one license per author in .licenses and asks that
+# redistributions include both authors' licenses.
+[saphyr-parser.clarify]
+license = "MIT OR Apache-2.0"
+
+[[saphyr-parser.clarify.files]]
+path = ".licenses/ChenYuheng-MIT"
+license = "MIT"
+checksum = "70480dc70c2fe1d9bbb64dab9a0abce266332905ffef9cabeae26dd027716ecb"
+
+[[saphyr-parser.clarify.files]]
+path = ".licenses/Ethiraric-MIT"
+license = "MIT"
+checksum = "90f4ea53f408858ba4886f57b8e3ceac876eefbb59c20f0844f0abbfa59e2749"
