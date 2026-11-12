@@ -153,6 +153,23 @@ A lock file was rejected: a crash can leave it behind and it can be committed by
 The lock is not a claim: it covers one file operation or one read of the files, not an issue between commands, so the exclusion of claims and locking in [[ADR-SMALL-SCOPE]] stands. It coordinates zban processes that share one `.zban/` directory. Editors, Git and other worktrees do not take it. On a file system without advisory locks, taking the lock fails as unsupported, and zban then writes or reads without it, a write guarded by the byte comparison alone as before; any other failure to take the lock fails the command with `io`.
 :::
 
+:::mara decision ADR-CREATE-WITHOUT-HARD-LINKS
+:mid: 01M785TJ0TQG6K5K6WJS3G8GBE
+:title: Create issue files by renaming where hard links are unsupported
+:status: draft
+
+`init` and `create` write a temporary file and then hard-link it to the issue's name, so that the write is atomic ([[REQ-PRESERVE-CONTENT]]) and a create fails rather than replacing an existing file ([[DES-SHARED-CORE]]). Some file systems have no hard links. On Linux, linking then fails with `EPERM`, which `link(2)` documents for a file system that "does not support the creation of hard links"; FAT and exFAT drives and many FUSE mounts are such file systems. On macOS, `linkat(2)` documents `ENOTSUP` for a file system that "does not support this call". With zban 0.1.0 on an `rclone mount` of a local directory, mounted by an ordinary user, `init` and every `create`, open or closed, failed with `io` and "Operation not permitted (os error 1)". `update`, closing, reopening and `delete`, which rename or remove files, worked, and so did advisory locks.
+
+The options considered:
+
+- **Keep hard links only.** Name the missing support in the `io` message and document that zban needs hard links. No promise changes, but zban cannot create issues on these file systems.
+- **Create the issue file exclusively.** Open the issue's name with exclusive creation, then write and sync it. A create still never replaces a file, but an interrupted create leaves an empty or partial issue file, which breaks [[REQ-PRESERVE-CONTENT]]. `check` would report it as unreadable, and `check --fix` could not tell it from a damaged hand edit. A read during the write would see the partial file unless the write held the lock.
+- **Check, then rename, under the write lock.** Take the exclusive lock of [[ADR-WRITE-LOCK]], check that neither `.zban/` nor the archive holds the name, and rename the temporary file to it, as closing and reopening already move a file. The write stays atomic, an interrupted create leaves only a temporary file, and where the file system has advisory locks no other zban process can take the name in between. A writer that does not take the lock, such as an editor, Git, or zban on a file system without advisory locks, could create the same name between the check and the rename and have its file replaced. The name is a freshly drawn random ID that neither directory held an instant before, so that writer would have to pick the same one of 2^30 values in that instant.
+- **Rename without replacing.** `renameat2` with `RENAME_NOREPLACE` on Linux and `renamex_np` with `RENAME_EXCL` on macOS are atomic and never replace. The standard library offers neither, so they need a new dependency ([[ADR-DEPENDENCIES]]), and FUSE mounts support them only when their server does, so another fallback would still be needed.
+
+Proposed: keep the hard link, and fall back to checking then renaming under the write lock when linking fails with `EPERM` or as unsupported (`Unsupported`, `ENOSYS`, `ENOTSUP`, `EOPNOTSUPP`), in both `init` and `create`. File systems with hard links keep today's guarantee. On the others, writes stay atomic, and "a create never replaces an existing file" weakens only against writers that do not take the lock, the caveat that [[ADR-WRITE-LOCK]] already accepts for replacing and moving a file. Falling back on an `EPERM` with another cause is harmless: each such cause that can apply to a file zban has just created also makes the rename fail, so the command fails with `io` as before. Always checking then renaming would drop the hard link and one code path, at the cost of that caveat on every file system. If accepted, the sentence on exclusive creation in [[DES-SHARED-CORE]] changes to match, and [[VER-ISSUE-FILES]] gains a check that a create whose link is refused still writes atomically and does not replace an existing file; CI has no file system without hard links, so the check drives the fallback directly.
+:::
+
 ## Risks
 
 :::mara risk RISK-DUPLICATE-WORK
