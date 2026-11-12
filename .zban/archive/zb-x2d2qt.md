@@ -2,6 +2,7 @@
 title: Claude Code truncates the MCP guide at 4096 characters
 status: done
 type: bug
+discovered_from: zb-wbacwg
 created_at: 2026-11-12T19:40:41Z
 closed_at: 2026-11-12T20:04:28Z
 ---

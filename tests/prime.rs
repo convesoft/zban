@@ -586,21 +586,46 @@ fn guide_lists_every_option_of_each_command() {
     }
 }
 
+/// The line that `docs/agents.mara.md` recommends for a project's agent
+/// instructions: the Markdown block that starts with `**IMPORTANT**`, with its
+/// final line break.
+fn recommended_line() -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/agents.mara.md");
+    let documented = fs::read_to_string(path).unwrap();
+    let fence = "```markdown\n";
+    let start = documented
+        .find(&format!("{fence}**IMPORTANT**"))
+        .expect("docs/agents.mara.md recommends an **IMPORTANT** line")
+        + fence.len();
+    let end = start + documented[start..].find("\n```\n").unwrap() + 1;
+    documented[start..end].to_owned()
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn setup_line_names_the_heading_the_guide_starts_with() {
+    let line = recommended_line();
+    assert!(line.contains("`# zban workflow`"), "{line}");
+    assert!(line.contains("`zban prime`"), "{line}");
+    for guide in guides() {
+        assert!(guide.starts_with("# zban workflow\n"), "{guide}");
+    }
+    let outside = temp_dir();
+    let note = instructions(outside.path(), &[]);
+    assert!(!note.contains("# zban workflow"), "{note}");
+}
+
 /// For `VAL-DOGFOOD`: this repository's `AGENTS.md` loads the guide with the
-/// line that `docs/agents.mara.md` recommends, and `zban prime` prints the
-/// guide here.
+/// line that `docs/agents.mara.md` recommends, as a paragraph of its own, and
+/// `zban prime` prints the guide here.
 #[test]
 fn this_repository_loads_the_guide() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let documented = fs::read_to_string(root.join("docs/agents.mara.md")).unwrap();
-    let line = documented
-        .lines()
-        .find(|line| line.starts_with("**IMPORTANT**") && line.contains("`zban prime`"))
-        .expect("docs/agents.mara.md recommends a `zban prime` line");
+    let line = recommended_line();
     let agents = fs::read_to_string(root.join("AGENTS.md")).unwrap();
     assert!(
-        agents.lines().any(|agents_line| agents_line == line),
-        "AGENTS.md lacks {line:?}"
+        agents.contains(&format!("\n\n{line}\n")),
+        "AGENTS.md lacks the recommended line:\n{line}"
     );
 
     let expected = fs::read_to_string(root.join(SNAPSHOT)).unwrap();
