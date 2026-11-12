@@ -35,7 +35,7 @@ These sets are fixed for every project ([[ADR-FIXED-VOCABULARY]]).
 
 | Type | Use for |
 | --- | --- |
-| `epic` | A larger outcome that groups features and tasks. Not worked on directly. |
+| `epic` | A larger outcome that groups features, tasks and smaller epics, such as phases. Not worked on directly. |
 | `feature` | A user-facing capability or enhancement |
 | `bug` | Something that is broken |
 | `task` | A concrete piece of work: a chore, or a step of a feature |
@@ -68,6 +68,20 @@ closed and nothing above them in the parent chain is closed or blocked. A
 `draft` parent does not hold its children back. Epics are never ready, because
 their children carry the work. Every listing uses the same order: priority, then
 age, then ID. The precise rule is [[DES-READINESS]].
+
+Because readiness follows the whole parent chain, nested epics can split larger
+work into phases. A `blocked_by` between sibling epics puts the phases in order:
+
+```text
+zb-9jra34  epic  Deliver zban v1
+├─ zb-h4p1q7  epic  Phase 1: core
+│   └─ tasks, ready now
+└─ zb-m2x8r5  epic  Phase 2: integrations   (blocked_by: zb-h4p1q7)
+    └─ tasks, ready once Phase 1 is closed
+```
+
+Phase 1 can close only after all its children have closed, so Phase 2's work
+appears in the ready list exactly when Phase 1 is finished.
 
 ## Closing and the archive
 
@@ -283,7 +297,7 @@ An issue is ready when all of these hold:
 4. no ancestor in its `parent` chain is closed;
 5. no ancestor has a `blocked_by` target that is still open.
 
-Only closed or blocked ancestors hold an issue back. An ancestor's type, or its status `draft` or `in-progress`, does not. A reference to an unknown issue counts as an open blocker. Ready issues, like every listing, are ordered by priority (`critical` first), then `created_at` (oldest first), then ID. For an open issue that is not ready, zban reports every applicable reason: `status`, `epic`, `blocked_by:<id>`, `ancestor_closed:<id>` and `ancestor_blocked:<id>`.
+Only closed or blocked ancestors hold an issue back. An ancestor's type, or its status `draft` or `in-progress`, does not. A reference to an unknown issue counts as an open blocker. Ready issues, like every listing, are ordered by priority (`critical` first), then `created_at` (oldest first), then ID. For an open issue that is not ready, zban reports every applicable reason: `status`, `epic`, `blocked_by:<id>`, `ancestor_closed:<id>` and `ancestor_blocked:<id>`. In `blocked_by:<id>` the ID is the open blocker. In `ancestor_closed:<id>` and `ancestor_blocked:<id>` it is the ancestor, one reason per affected ancestor; showing that ancestor tells what blocks it.
 :::
 
 :::mara design DES-LIFECYCLE

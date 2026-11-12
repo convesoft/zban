@@ -42,7 +42,7 @@ Agents in different worktrees cannot see each other's status changes until their
 :status: accepted
 :justifies: REQ-FIXED-VOCABULARY
 
-A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. zban fixes all three sets. `draft` keeps unrefined ideas out of ready work. `cancelled` keeps abandoned work apart from delivered work. There is no milestone type; group a release with an epic or a tag. Priorities are five named levels because names read better than numbers in prompts.
+A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. zban fixes all three sets. `draft` keeps unrefined ideas out of ready work. `cancelled` keeps abandoned work apart from delivered work. There is no milestone type. Nested epics, ordered with `blocked_by`, cover phases inside larger work, and a tag groups a release that cuts across epics. Priorities are five named levels because names read better than numbers in prompts.
 :::
 
 :::mara decision ADR-RANDOM-IDS
