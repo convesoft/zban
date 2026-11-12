@@ -124,6 +124,10 @@ lock on `.zban/` while it checks and replaces a file, so when two agents update
 one issue together, neither change is lost: at worst one of them gets `conflict`
 and retries. The lock lasts only for that step and leaves no file behind.
 
+Commands that read issues share the lock while they list `.zban/`, so they never
+miss an issue that another zban command is replacing at that moment. Reads do
+not wait for each other, only for a write's short step.
+
 ## Broken files
 
 A file zban cannot read, for example one left with Git conflict markers after a
