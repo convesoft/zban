@@ -132,7 +132,7 @@ Snapshot tests cover `zban prime` and the MCP server instructions, both rendered
 :exercises: SCN-AGENT-SESSION
 :exercises: SCN-PARALLEL-BRANCHES
 
-After the CLI works, zban's own backlog is managed only through zban. Over at least ten issues worked on by agents, including some in parallel worktrees, review the history. Agents found ready work and kept checklists and summaries without prompting beyond the guide. Discovered work was filed as issues. No issue needed a manual frontmatter repair other than merge conflicts. `zban check` stayed clean on `main`. Record shortfalls as issues or as changes to this knowledge.
+After the CLI works, zban's own backlog is managed only through zban. Over at least ten issues worked on by agents, including some in parallel worktrees, review the history. Whoever chose the work, a single agent or whoever ran the parallel agents ([[ADR-NO-CLAIMS]]), found it with `zban list --ready`. Given only an issue to work on, agents kept checklists and summaries and closed their issues without further prompting. Discovered work was filed as issues. No issue needed a manual frontmatter repair other than merge conflicts. `zban check` stayed clean on `main`. Record shortfalls as issues or as changes to this knowledge.
 :::
 
 :::mara validation VAL-SCOPE-REVIEW
