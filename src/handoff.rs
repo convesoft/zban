@@ -56,11 +56,25 @@ pub(crate) fn write(body: &str, text: &str, now: &Timestamp) -> Result<String> {
         ));
     }
     let note = format!("## Handoff ({now})\n\n{text}");
-    Ok(match only(body)? {
+    let written = match only(body)? {
         None => joined(body, &note),
         Some(old) if old.end == body.len() => format!("{}{note}", &body[..old.start]),
         Some(old) => format!("{}{note}\n{}", &body[..old.start], &body[old.end..]),
-    })
+    };
+    // Whatever the Markdown around the note does, for example a fenced code
+    // block that the body leaves open before it, the new body must give back
+    // exactly this note, or the note is lost and a later write adds another.
+    let expected = Handoff {
+        written_at: Some(now.clone()),
+        text: stored(text.trim_start_matches(['\r', '\n'])),
+    };
+    if Handoff::of(&written) != Some(expected) {
+        return Err(invalid(
+            "the note would not read back as the issue's handoff, for example because \
+             the body leaves a fenced code block open before it; fix the body first",
+        ));
+    }
+    Ok(written)
 }
 
 /// `body` without its handoff section. When the section ends the body, the
@@ -232,6 +246,30 @@ mod tests {
         let fenced = "```\n## Fenced\n```\n### Detail\n";
         assert!(write("", fenced, &now()).is_ok());
         assert_eq!(code(write("", "\n\n", &now())), ErrorCode::Usage);
+    }
+
+    #[test]
+    fn rejects_a_note_that_would_not_read_back() {
+        for body in ["Intro\n\n```sh\necho\n", "```\n## Handoff\n", "~~~\n"] {
+            assert_eq!(
+                code(write(body, "New", &now())),
+                ErrorCode::InvalidHandoff,
+                "{body:?}"
+            );
+        }
+        // Balanced on its own, but it closes the body's fence and then
+        // shows another handoff heading.
+        let text = "```\n## Handoff\n```\n";
+        assert!(write("", text, &now()).is_ok());
+        assert_eq!(
+            code(write("```\n", text, &now())),
+            ErrorCode::InvalidHandoff
+        );
+        // Blank lines before the text are kept and do not count as read.
+        assert_eq!(
+            write("", "\n\nNew\r\n", &now()).unwrap(),
+            format!("## Handoff ({NOW})\n\n\n\nNew\n")
+        );
     }
 
     #[test]
