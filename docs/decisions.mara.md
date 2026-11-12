@@ -178,13 +178,13 @@ The rejected alternatives:
 
 :::mara risk RISK-DUPLICATE-WORK
 :mid: 01M764FJ3ZM69JRX3088WM98RP
-:title: Parallel agents start the same issue
+:title: Parallel agents duplicate work
 :status: accepted
 :likelihood: possible
 :consequence: moderate
 :threatens: NEED-FIND-NEXT
 
-Two agents on different branches may both see an issue as ready and start it, because `in-progress` on one branch is invisible on the other until merge. The work is duplicated and one result is discarded. [[ADR-NO-CLAIMS]] accepts this for v1.
+Two agents on different branches may both see an issue as ready and start it, because `in-progress` on one branch is invisible on the other until merge. Two agents that find the same problem may likewise each file an issue for it, because an issue created on one branch is invisible on the other until merge. The work is duplicated and one result is discarded. [[ADR-NO-CLAIMS]] accepts this for v1, and [[ADR-SMALL-SCOPE]] excludes the state shared across worktrees that could prevent it.
 :::
 
 :::mara risk RISK-ID-COLLISION
