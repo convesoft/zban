@@ -65,6 +65,18 @@ impl Timestamp {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The seconds since the Unix epoch; zero for earlier times.
+    pub fn unix(&self) -> u64 {
+        let number = |start: usize, len: usize| -> i64 {
+            self.0[start..start + len]
+                .parse()
+                .expect("timestamps hold digits")
+        };
+        let days = days_from_civil(number(0, 4), number(5, 2), number(8, 2));
+        let seconds = days * 86_400 + number(11, 2) * 3600 + number(14, 2) * 60 + number(17, 2);
+        u64::try_from(seconds).unwrap_or(0)
+    }
 }
 
 impl fmt::Display for Timestamp {
@@ -88,6 +100,18 @@ fn days_in_month(year: u32, month: u32) -> u32 {
         4 | 6 | 9 | 11 => 30,
         _ => 31,
     }
+}
+
+/// Converts a proleptic Gregorian date to days since 1970-01-01, after
+/// Howard Hinnant's `days_from_civil`.
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year.rem_euclid(400);
+    let month_from_march = if month > 2 { month - 3 } else { month + 9 };
+    let day_of_year = (153 * month_from_march + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
 }
 
 /// Converts days since 1970-01-01 to a proleptic Gregorian date, after Howard
@@ -125,6 +149,17 @@ mod tests {
             Timestamp::from_unix(4_107_542_399).as_str(),
             "2100-02-28T23:59:59Z"
         );
+    }
+
+    #[test]
+    fn converts_back_to_unix_times() {
+        for seconds in [0, 59, 951_825_599, 1_794_430_800, 4_107_542_399] {
+            assert_eq!(Timestamp::from_unix(seconds).unix(), seconds);
+        }
+        let leap = Timestamp::parse("2016-12-31T23:59:60Z").unwrap();
+        assert_eq!(leap.unix(), 1_483_228_800);
+        let early = Timestamp::parse("1969-12-31T23:59:59Z").unwrap();
+        assert_eq!(early.unix(), 0);
     }
 
     #[test]

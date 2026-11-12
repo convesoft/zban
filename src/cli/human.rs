@@ -4,8 +4,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-use zban::operations::{Initialized, IssueDetail, IssueView};
-use zban::{Finding, Id};
+use zban::operations::{Initialized, IssueDetail, IssueView, ListedIssue};
+use zban::{Finding, Id, Timestamp};
 
 pub fn initialized(initialized: &Initialized) -> String {
     format!(
@@ -19,14 +19,14 @@ pub fn changed(verb: &str, issue: &IssueView) -> String {
     format!("{verb} {}: {}\n", issue.id, issue.title)
 }
 
-/// One line per issue: ID, status, priority, type, title and checklist
-/// progress.
-pub fn list(issues: &[IssueView]) -> String {
+/// One line per issue: ID, status, priority, type, title, checklist
+/// progress and the age of the handoff note.
+pub fn list(issues: &[ListedIssue]) -> String {
     if issues.is_empty() {
         return "No issues.\n".to_owned();
     }
     let mut text = String::new();
-    for issue in issues {
+    for ListedIssue { issue, handoff_at } in issues {
         let _ = write!(
             text,
             "{}  {:<11}  {:<8}  {:<7}  {}",
@@ -42,6 +42,9 @@ pub fn list(issues: &[IssueView]) -> String {
                 "  [{}/{}]",
                 issue.checklist.checked, issue.checklist.total
             );
+        }
+        if let Some(written_at) = handoff_at {
+            let _ = write!(text, "  handoff {}", age(written_at));
         }
         text.push('\n');
     }
@@ -84,6 +87,13 @@ fn detail(detail: &IssueDetail) -> String {
         "closed_at",
         issue.closed_at.as_ref().map_or("", |t| t.as_str()),
     );
+    if let Some(handoff) = &detail.handoff {
+        let written = handoff.written_at.as_ref().map_or_else(
+            || "time unknown".to_owned(),
+            |time| format!("{time}, {}", age(time)),
+        );
+        field("handoff", &written);
+    }
     if issue.checklist.total > 0 {
         let progress = format!(
             "{}/{} checked",
@@ -107,6 +117,19 @@ fn detail(detail: &IssueDetail) -> String {
         }
     }
     text
+}
+
+/// How long ago `time` was, such as `3 hours ago`.
+fn age(time: &Timestamp) -> String {
+    let seconds = Timestamp::now().unix().saturating_sub(time.unix());
+    let (count, unit) = match seconds {
+        0..60 => return "just now".to_owned(),
+        60..3_600 => (seconds / 60, "minute"),
+        3_600..86_400 => (seconds / 3_600, "hour"),
+        _ => (seconds / 86_400, "day"),
+    };
+    let plural = if count == 1 { "" } else { "s" };
+    format!("{count} {unit}{plural} ago")
 }
 
 /// One line per finding: `<path>: <severity>: <message> [<code>]`, with the

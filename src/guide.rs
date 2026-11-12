@@ -230,6 +230,7 @@ const OPERATIONS: &[Operation] = &[
             Optional(text("body")),
             Optional(text("append")),
             Pair(many("replace_old", "TEXT"), many("replace_new", "TEXT")),
+            Either(text("handoff"), flag("no_handoff")),
             Optional(flag("force")),
         ],
     },
@@ -337,7 +338,7 @@ fn synopsis(operation: &Operation, surface: Surface) -> String {
                 let part = match *part {
                     Required(param) => format!("{}{}", placeholder(param), repeated(param)),
                     Optional(param) => format!("[{}]{}", usage(param), repeated(param)),
-                    Either(a, b) => format!("[{}|{}]", usage(a), usage(b)),
+                    Either(a, b) => format!("[{} | {}]", usage(a), usage(b)),
                     Pair(a, b) => format!("[{} {}]{}", usage(a), usage(b), repeated(a)),
                 };
                 text.push(' ');

@@ -14,7 +14,7 @@ use serde_json::Value;
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
 
-/// The keys of an issue in `list` and in mutation results.
+/// The keys of an issue in mutation results.
 const ISSUE_KEYS: &[&str] = &[
     "id",
     "title",
@@ -34,8 +34,18 @@ const ISSUE_KEYS: &[&str] = &[
     "not_ready",
 ];
 
+/// The key `list` adds.
+const LIST_KEYS: &[&str] = &["handoff_at"];
+
 /// The keys `show` adds.
-const DETAIL_KEYS: &[&str] = &["body", "children", "blocks", "related_from", "discovered"];
+const DETAIL_KEYS: &[&str] = &[
+    "body",
+    "handoff",
+    "children",
+    "blocks",
+    "related_from",
+    "discovered",
+];
 
 // The fixture of `fixture`: one letter repeated, named after the issue.
 const E: &str = "zb-eeeeee"; // epic, the parent of A, B and F
@@ -268,6 +278,7 @@ fn no_arguments_prints_help_as_invalid_usage() {
 fn every_command_prints_one_json_document() {
     let root = temp_dir("cli-json-documents");
     let issue_keys = sorted(&[ISSUE_KEYS]);
+    let list_keys = sorted(&[ISSUE_KEYS, LIST_KEYS]);
     let detail_keys = sorted(&[ISSUE_KEYS, DETAIL_KEYS]);
 
     let init = ok(&root, &["init"]);
@@ -333,7 +344,8 @@ fn every_command_prints_one_json_document() {
     assert_eq!(keys(&listing), ["issues", "warnings"]);
     assert_eq!(listing["warnings"], serde_json::json!([]));
     for issue in listing["issues"].as_array().unwrap() {
-        assert_eq!(keys(issue), issue_keys);
+        assert_eq!(keys(issue), list_keys);
+        assert_eq!(issue["handoff_at"], Value::Null);
     }
     assert_eq!(
         listing["issues"][1]["not_ready"],
@@ -349,6 +361,7 @@ fn every_command_prints_one_json_document() {
     assert_eq!(ids(&shown), [id, parent_id]);
     for issue in shown["issues"].as_array().unwrap() {
         assert_eq!(keys(issue), detail_keys);
+        assert_eq!(issue["handoff"], Value::Null);
     }
     assert_eq!(shown["issues"][0]["body"], "- [x] one\n- [ ] two\n");
     assert_eq!(shown["issues"][1]["children"], serde_json::json!([id]));

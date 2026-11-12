@@ -124,7 +124,8 @@ struct ListArgs {
     all: bool,
 }
 
-/// Body edits apply in order: `--body`, each replacement, then `--append`.
+/// Body edits apply in order: `--body`, each replacement, `--append`, then
+/// the handoff note.
 #[derive(Args)]
 struct UpdateArgs {
     #[arg(value_name = "ID")]
@@ -180,6 +181,18 @@ struct UpdateArgs {
         requires = "replace_old"
     )]
     replace_new: Vec<String>,
+    /// Write the handoff note, replacing any earlier one; `-` reads standard
+    /// input.
+    #[arg(
+        long,
+        value_name = "TEXT|-",
+        allow_hyphen_values = true,
+        conflicts_with = "no_handoff"
+    )]
+    handoff: Option<String>,
+    /// Remove the handoff note.
+    #[arg(long)]
+    no_handoff: bool,
     /// Close even with unchecked task items or open children.
     #[arg(long)]
     force: bool,
@@ -292,6 +305,7 @@ impl UpdateArgs {
         Ok(UpdateRequest {
             body: stdin.resolve("--body", self.body)?,
             append: stdin.resolve("--append", self.append)?,
+            handoff: removable(stdin.resolve("--handoff", self.handoff)?, self.no_handoff),
             id: self.id,
             title: self.title,
             status: self.status,

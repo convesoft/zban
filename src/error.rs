@@ -38,6 +38,9 @@ pub enum ErrorCode {
     TextNotFound,
     /// A replacement's old text occurs more than once in the body.
     TextAmbiguous,
+    /// Handoff text contains a level 1 or 2 heading or an unclosed fence, or
+    /// the body has several handoff sections.
+    InvalidHandoff,
     /// The file changed between reading and writing it.
     Conflict,
     /// Any other file-system failure.
@@ -63,6 +66,7 @@ impl ErrorCode {
             Self::Referenced => "referenced",
             Self::TextNotFound => "text_not_found",
             Self::TextAmbiguous => "text_ambiguous",
+            Self::InvalidHandoff => "invalid_handoff",
             Self::Conflict => "conflict",
             Self::Io => "io",
         }

@@ -3,9 +3,6 @@
 `zban` is a single binary. Every command prints human-readable output by default
 and one JSON document with `--json`. Run `zban <command> --help` for full options.
 
-> The handoff options are not implemented yet. This page describes the
-> agreed v1 interface.
-
 ## Common tasks
 
 ```sh
@@ -108,7 +105,7 @@ The command line and the MCP server expose the same operations with the same val
 | `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. With `--json` it prints `{"guide": "..."}`, with `null` outside a project. |
 | `mcp` | Serves MCP over stdio ([[DES-MCP-TOOLS]]). Takes no `--json`. |
 
-Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, then `--append`.
+Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, `--append`, then the handoff.
 
 Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init` and `prime` fails with `project_not_found` when no project is found. The error codes are:
 
@@ -129,7 +126,7 @@ Exit status is 0 on success, 1 when an operation fails or `check` finds errors, 
 | `referenced` | Deleting an issue that another issue references |
 | `text_not_found` | A replacement's old text does not occur in the body |
 | `text_ambiguous` | A replacement's old text occurs more than once |
-| `invalid_handoff` | Handoff text contains a level 1 or 2 heading, or the body has several handoff sections ([[DES-HANDOFF]]) |
+| `invalid_handoff` | Handoff text contains a level 1 or 2 heading or leaves a fenced code block open, or the body has several handoff sections ([[DES-HANDOFF]]) |
 | `conflict` | The file changed between reading and writing ([[REQ-NO-LOST-UPDATES]]) |
 | `io` | Any other file-system failure |
 
