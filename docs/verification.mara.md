@@ -82,7 +82,7 @@ Use a corpus of broken projects, one for each finding kind listed in [[REQ-CHECK
 :verifies: REQ-LIST-FILTERS
 :verifies: REQ-BODY-EDITS
 
-Run every command with `--json` through the real binary. The output parses as one document with the fields documented in [[DES-CLI]]. Failures return an error object and exit status 1, and invalid usage exits with 2. Each list filter alone and in combination, search and `--all` select the expected issues, in the order defined by [[DES-READINESS]]. Commands run outside a project fail with `project_not_found`. Replacing text that is absent or occurs more than once fails without writing. An update that combines replacements, an append and metadata changes is all or nothing. Body input from standard input works for create and update.
+Run every command with `--json` through the real binary. The output parses as one document with the fields documented in [[DES-CLI]]. Failures return an error object and exit status 1, and invalid usage exits with 2. Each list filter alone and in combination, search and `--all` select the expected issues, in the order defined by [[DES-READINESS]]. Commands run outside a project fail with `project_not_found`. `-C DIR`, given a project root or one of its subdirectories, behaves like starting in `DIR`. Replacing text that is absent or occurs more than once fails without writing. An update that combines replacements, an append and metadata changes is all or nothing. Body input from standard input works for create and update.
 :::
 
 :::mara verification VER-SURFACE-PARITY
@@ -93,7 +93,7 @@ Run every command with `--json` through the real binary. The output parses as on
 :verifies: REQ-SURFACE-PARITY
 :verifies: REQ-MCP-STDIO
 
-A real MCP client talks to `zban mcp` over stdio and runs a create, block, ready, update, close and check flow. For the same requests against identical fixtures, the tool results equal the CLI's JSON output, and invalid arguments produce the same error codes. The tool list matches [[DES-MCP-TOOLS]]. Started outside a project, the server serves its instructions and every tool fails with `project_not_found`.
+A real MCP client talks to `zban mcp` over stdio and runs a create, block, ready, update, close and check flow. For the same requests against identical fixtures, the tool results equal the CLI's JSON output, and invalid arguments produce the same error codes. The tool list matches [[DES-MCP-TOOLS]]. Started outside a project, the server sends the short note as its instructions and every tool without a `directory` fails with `project_not_found`. Calls whose `directory` points into another project or worktree read and write only that project, and a relative `directory` is rejected.
 :::
 
 :::mara verification VER-AGENT-GUIDE
@@ -104,7 +104,7 @@ A real MCP client talks to `zban mcp` over stdio and runs a create, block, ready
 :methods: inspection
 :verifies: REQ-AGENT-GUIDE
 
-Snapshot tests cover `zban prime` and the MCP server instructions, both rendered from the same template. The vocabulary lists in the guide equal the enumerations in the code, and every command or tool the guide names exists. `zban prime` outside a project prints nothing and exits 0. Inspection confirms the guide covers the sections in [[DES-AGENT-GUIDE]] and stays under about 150 lines.
+Snapshot tests cover `zban prime` and the MCP server instructions, both rendered from the same template. The vocabulary lists in the guide equal the enumerations in the code, and every command or tool the guide names exists. `zban prime` outside a project prints nothing and exits 0, and `zban prime -C <project>` from there prints the full guide. A server started inside a project sends the full guide; one started outside sends the short note, which names `directory` and `zban prime -C`. Inspection confirms the guide covers the sections in [[DES-AGENT-GUIDE]] and stays under about 150 lines.
 :::
 
 ## Outcome check

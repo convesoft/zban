@@ -131,6 +131,17 @@ Two agents on different branches may both see an issue as ready and start it, be
 Two branches could generate the same random ID. Both issues are then `<id>.md`, so the merge stops with an add/add conflict that has to be resolved by giving one issue a new ID. The collision merges silently only when one copy was already archived on its branch, so the paths differ; the ID is then ambiguous until `zban check` reports it. With 2^30 values per prefix, a thousand issues created on each of two branches collide with a probability of about 0.1%.
 :::
 
+:::mara risk RISK-SESSION-ABOVE-PROJECT
+:mid: 01M772MFTG88ME51FKVXTNF540
+:title: Agents started above a project miss the guide
+:status: accepted
+:likelihood: possible
+:consequence: minor
+:threatens: NEED-AGENT-ONBOARDING
+
+zban decides whether to deliver the agent guide from the directory where a session starts. An agent started in a folder above the project, such as a folder of several repositories or the top of a monorepo with `.zban/` in a subfolder, gets nothing from `zban prime` and only a short note over MCP. It may then track work outside zban. Delivering the full guide everywhere would cost every unrelated session about 150 lines and give advice that does not apply there. The short MCP note still points to `zban prime -C`, and the user guide documents the limitation.
+:::
+
 :::mara risk RISK-MERGE-CONFLICTS
 :mid: 01M764FJ3ZVFTZJKT1TXJQ3SM9
 :title: Concurrent edits to one issue conflict on merge

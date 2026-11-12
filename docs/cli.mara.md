@@ -25,8 +25,14 @@ zban check                                  # report problems in .zban/
 zban check --fix                            # move misplaced files
 ```
 
-Global options are `--json` and `--root PATH`. `PATH` is the directory that
-contains `.zban/`; by default zban searches upward from the current directory.
+Global options are `--json` and `-C, --directory DIR`. zban finds its project by
+searching upward from the current directory to the nearest `.zban/`. With
+`-C DIR` it behaves as if started in `DIR`, so any directory inside a project
+works:
+
+```sh
+zban -C ../other-repo list --ready
+```
 
 ## Requirements
 
@@ -90,6 +96,8 @@ The command line and the MCP server expose the same operations with the same val
 | `check` | `--fix` |
 | `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. |
 | `mcp` | Serves MCP over stdio ([[DES-MCP-TOOLS]]) |
+
+Every command accepts the global options `--json` and `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]).
 
 Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init` and `prime` fails with the error code `project_not_found` when no project is found. A concurrent change fails with `conflict` ([[REQ-NO-LOST-UPDATES]]).
 

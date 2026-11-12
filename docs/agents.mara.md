@@ -8,7 +8,8 @@ zban teaches agents its workflow itself, so a project needs very little setup.
 
 **With MCP** (recommended where supported): configure the [MCP server](mcp.mara.md).
 The server's instructions carry the agent guide, and clients such as Claude Code
-keep them in context across compaction.
+keep them in context across compaction. Started outside a zban project, the
+server sends only a short note instead of the full guide.
 
 **Without MCP** (CLI-only agents, CI jobs, clients that ignore server
 instructions): make the agent read `zban prime`. Add this line to your
@@ -32,6 +33,13 @@ Or, in Claude Code, inject it automatically with hooks in `.claude/settings.json
 `zban prime` prints nothing outside a zban project, so these hooks can also go in
 your user-level settings.
 
+> **Known limitation:** zban decides whether to deliver the guide from the
+> directory where the session starts. If you start your agent in a folder above
+> the project, such as a folder holding several repositories, or the top of a
+> monorepo whose `.zban/` lives in a subfolder, the agent gets no guide from
+> `zban prime`, and only the short note over MCP. Start the session inside the
+> project, or ask the agent to run `zban prime -C <project>`.
+
 Project-specific rules belong in your own `AGENTS.md`, for example "include the
 issue ID in commit messages as `Refs: zb-xxxxxx`". zban does not configure them.
 
@@ -50,7 +58,7 @@ issue ID in commit messages as `Refs: zb-xxxxxx`". zban does not configure them.
 :status: accepted
 :satisfies: NEED-AGENT-ONBOARDING
 
-zban provides an agent workflow guide through `zban prime` and through the MCP server instructions. Both come from one source text and name the operations the way the surface does: commands for the CLI, tools for MCP. The vocabulary in the guide comes from the binary itself, so it cannot disagree with the binary.
+zban provides an agent workflow guide through `zban prime` and through the MCP server instructions. Both deliver the full guide only when a project is found, so sessions outside zban projects carry almost none of it. Both come from one source text and name the operations the way the surface does: commands for the CLI, tools for MCP. The vocabulary in the guide comes from the binary itself, so it cannot disagree with the binary.
 :::
 
 ## Design
@@ -60,6 +68,7 @@ zban provides an agent workflow guide through `zban prime` and through the MCP s
 :title: Agent guide content
 :status: accepted
 :satisfies: REQ-AGENT-GUIDE
+:mitigates: RISK-SESSION-ABOVE-PROJECT
 
 The guide is one template compiled into the binary and kept under about 150 lines, because it is paid for in every agent context. Its sections are:
 
@@ -70,6 +79,10 @@ The guide is one template compiled into the binary and kept under about 150 line
 5. **Committing.** Commit issue files together with the code they describe.
 6. **Finding work.** Use the ready list and offer the top candidates; show an issue before starting it.
 7. **Reference.** Types, statuses, priorities, relations, the readiness rule, and the operations with their key options.
+
+The MCP rendering also tells agents to pass `directory` on every call when they work in a worktree or outside the directory the server started in.
+
+Delivery depends on the project found where the surface starts: from the working directory or `-C` for `prime`, and from the server's `-C` or working directory at startup for MCP. With a project, both deliver the full guide. Without one, `prime` prints nothing, and the MCP server sends a short note of a few lines instead: zban tracks issues in `.zban/` directories, no project was found where the server started, tools take `directory`, and `zban prime -C <dir>` prints the full guide.
 
 Project-specific conventions are deliberately left out; projects add them in their own agent instructions.
 :::
