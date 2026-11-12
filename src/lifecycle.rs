@@ -64,15 +64,7 @@ impl Project {
         force: bool,
     ) -> Result<IssueFile> {
         let (Some(id), Some(before)) = (&file.id, &file.issue) else {
-            let reason = file.problems.iter().find(|problem| problem.code.is_error());
-            return Err(Error::new(
-                ErrorCode::Unreadable,
-                format!(
-                    "{} cannot be read{}; fix it by hand first",
-                    file.path.display(),
-                    reason.map_or_else(String::new, |problem| format!(": {}", problem.message))
-                ),
-            ));
+            return Err(file.unreadable());
         };
         if !force && issue.status != before.status {
             refuse_unfinished(files, id, &issue)?;
