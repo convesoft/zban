@@ -117,7 +117,7 @@ An issue can hold one handoff note in its body. An update writes the note, repla
 :satisfies: REQ-AGENT-GUIDE
 :mitigates: RISK-SESSION-ABOVE-PROJECT
 
-The guide is one template compiled into the binary and kept under about 150 lines, because it is paid for in every agent context. Its sections are:
+The guide is one template compiled into the binary and kept under about 150 lines, because it is paid for in every agent context. The MCP rendering also stays within 3,800 characters, a margin under the 4,096 at which Claude Code truncates server instructions. It leaves out what the tool schemas carry, such as each tool's parameters, and both renderings share tight wording rather than diverging text. Its sections are:
 
 1. **Track work in zban.** Use issues instead of ad-hoc todo lists.
 2. **Before starting.** Look for an existing issue, otherwise create one; set it `in-progress`.
@@ -126,7 +126,7 @@ The guide is one template compiled into the binary and kept under about 150 line
 5. **Committing.** Commit issue files together with the code they describe.
 6. **Handoffs.** Writing and resuming handoff notes, as in [[DES-HANDOFF]].
 7. **Finding work.** Use the ready list and offer the top candidates; show an issue before starting it.
-8. **Reference.** Types, statuses, priorities, relations, the readiness rule, and the operations with their key options.
+8. **Reference.** Types, statuses, priorities, relations and the readiness rule. The command-line rendering also lists every command with its options; the MCP rendering leaves the tools' parameters to their schemas.
 
 The MCP rendering also tells agents to pass `directory` on every call when they work in a worktree or outside the directory the server started in.
 

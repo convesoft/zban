@@ -11,7 +11,8 @@
 //!   are placeholders and other values literals; a quoted literal keeps its
 //!   spaces, and its quotes on the command line. A text parameter given a
 //!   placeholder reads standard input on the command line (`--body -`).
-//! - `{{synopsis update}}` gives the operation with all its parameters.
+//! - `{{synopsis update}}` gives the command with all its options. Over MCP
+//!   it names only the tool, whose input schema carries the parameters.
 //! - `{{param force}}` names a parameter: `--force` or `force`.
 //! - `{{cli}}`, `{{mcp}}` and `{{end}}` enclose text for one surface. A tag
 //!   alone on its line removes the line.
@@ -19,9 +20,10 @@
 //!   the vocabulary of the code.
 //!
 //! Every operation and parameter comes from [`OPERATIONS`], one table for
-//! both surfaces. Tests check the rendered guides against the command-line
-//! definitions and the MCP tool schemas in both directions, so the table
-//! cannot drift from either.
+//! both surfaces. Tests check the command-line guide against the command-line
+//! definitions in both directions, and the tools and parameters that the MCP
+//! guide names against the tool schemas, so the table cannot drift from
+//! either.
 
 use std::fmt;
 
@@ -322,8 +324,8 @@ fn mention(name: &str, surface: Surface) -> String {
     }
 }
 
-/// The operation with all its parameters, such as `zban show ID...` or
-/// `show_issues {ids: [ID]}`.
+/// The command with all its options, such as `zban show ID...`, or the tool
+/// alone, such as `show_issues`.
 fn synopsis(operation: &Operation, surface: Surface) -> String {
     match surface {
         Surface::Cli => {
@@ -346,25 +348,8 @@ fn synopsis(operation: &Operation, surface: Surface) -> String {
             }
             text
         }
-        Surface::Mcp => {
-            let fields: Vec<_> = operation
-                .params()
-                .map(|(param, required)| {
-                    let value = match param.kind {
-                        Kind::Flag => "true",
-                        Kind::Value(_) | Kind::Text => placeholder(param),
-                    };
-                    let value = if param.many {
-                        format!("[{value}]")
-                    } else {
-                        value.to_owned()
-                    };
-                    let optional = if required { "" } else { "?" };
-                    format!("{}{optional}: {value}", param.name)
-                })
-                .collect();
-            format!("{} {{{}}}", operation.tool, fields.join(", "))
-        }
+        // The tool's input schema carries its parameters.
+        Surface::Mcp => operation.tool.to_owned(),
     }
 }
 
@@ -515,10 +500,7 @@ mod tests {
         );
         assert_eq!(
             both("synopsis show"),
-            (
-                "zban show ID...".to_owned(),
-                "show_issues {ids: [ID]}".to_owned()
-            )
+            ("zban show ID...".to_owned(), "show_issues".to_owned())
         );
         assert_eq!(
             both("param no_parent"),
