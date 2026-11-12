@@ -101,6 +101,10 @@ zban refuses to close unfinished work unless you force it:
 - `done` while the body still has unchecked `- [ ]` items;
 - `done` or `cancelled` while the issue has open children.
 
+`zban create -s done` also refuses a body with unchecked items, and `create`
+has no `--force`: create the issue open, then close it with
+`zban update ID -s done --force`.
+
 zban never closes children for you. Close or cancel each child with its own
 summary or reason first. A forced close leaves the children open, and
 `zban check` warns about them.
@@ -354,6 +358,7 @@ Any status can change to any other status; zban enforces no workflow beyond thes
 - **Done with open tasks.** A task item is a list line starting with `- [ ]`, `* [ ]` or `+ [ ]` (unchecked) or the same with `[x]` or `[X]` (checked), at any indentation and outside fenced code blocks. Changing the status to `done` while an unchecked item exists fails unless forced.
 - **Close with open children.** Changing the status to `done` or `cancelled` while an issue whose `parent` is this one is open fails unless forced. The error names the open children.
 - **Checked state.** Both rules apply to the issue as the request leaves it, so one update can check the last task item, append a summary and set `done`.
+- **Creating closed.** Creating an issue as `done` while it has an unchecked task item fails the same way, and `create` cannot be forced. To record such an issue, create it open, then force setting `done` with an update. A new issue has no children, so creating it closed never fails for open children.
 - **Closing.** Entering `done` or `cancelled` sets `closed_at`. Leaving them removes it. Closing never changes children or dependents ([[ADR-NO-CASCADE]]).
 - **Placement.** After a status change crosses between open and closed, zban first rewrites the file atomically in place (a temporary file renamed over the original), then renames it into the other directory. If the second step is interrupted, the file has the right content in the wrong place, which `zban check --fix` repairs.
 :::

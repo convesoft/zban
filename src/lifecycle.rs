@@ -90,21 +90,21 @@ impl Project {
     }
 }
 
+/// Refuses creating `issue` as `done` with unchecked task items, which
+/// cannot be forced (`DES-LIFECYCLE`). A new issue has no children.
+// @mara implements DES-LIFECYCLE
+pub(crate) fn refuse_unfinished_creation(issue: &Issue) -> Result<()> {
+    refuse_unchecked(
+        issue,
+        "the new issue",
+        "create it open and then force setting done",
+    )
+}
+
 /// Refuses closing `issue` while its work is unfinished: `done` with
 /// unchecked task items, or `done` or `cancelled` with open children.
 fn refuse_unfinished(files: &[IssueFile], id: &Id, issue: &Issue) -> Result<()> {
-    if issue.status == Status::Done {
-        let unchecked = issue.checklist().unchecked();
-        if unchecked > 0 {
-            let items = if unchecked == 1 { "item" } else { "items" };
-            return Err(Error::new(
-                ErrorCode::UncheckedItems,
-                format!(
-                    "{id} has {unchecked} unchecked task {items}; check them first, or force setting done"
-                ),
-            ));
-        }
-    }
+    refuse_unchecked(issue, id.as_str(), "force setting done")?;
     if issue.status.is_closed() {
         let children = open_children(files, id);
         if !children.is_empty() {
@@ -120,6 +120,27 @@ fn refuse_unfinished(files: &[IssueFile], id: &Id, issue: &Issue) -> Result<()> 
         }
     }
     Ok(())
+}
+
+/// Fails with `unchecked_items` when `issue` is `done` with unchecked task
+/// items. The message names the issue as `name` and offers `remedy` besides
+/// checking the items.
+fn refuse_unchecked(issue: &Issue, name: &str, remedy: &str) -> Result<()> {
+    if issue.status != Status::Done {
+        return Ok(());
+    }
+    match issue.checklist().unchecked() {
+        0 => Ok(()),
+        unchecked => {
+            let items = if unchecked == 1 { "item" } else { "items" };
+            Err(Error::new(
+                ErrorCode::UncheckedItems,
+                format!(
+                    "{name} has {unchecked} unchecked task {items}; check them first, or {remedy}"
+                ),
+            ))
+        }
+    }
 }
 
 /// The open issues whose parent is `id`, sorted by ID.

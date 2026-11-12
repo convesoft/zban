@@ -18,7 +18,7 @@ use crate::guide::Surface;
 use crate::handoff::{self, Handoff};
 use crate::id::{Id, Prefix};
 use crate::issue::{Issue, IssueType, Priority, Severity, Status};
-use crate::lifecycle::Checklist;
+use crate::lifecycle::{self, Checklist};
 use crate::markdown::{joined, stored};
 use crate::relations::{Entry, Graph, IssueRef, NotReady};
 use crate::store::{IssueFile, Project};
@@ -201,7 +201,8 @@ pub fn init(directory: &Path, prefix: Option<&str>) -> Result<Initialized> {
     })
 }
 
-/// Creates an issue with the defaults of `DES-LIFECYCLE`.
+/// Creates an issue with the defaults and the closing rules of
+/// `DES-LIFECYCLE`, which a creation cannot force.
 pub fn create(project: &Project, request: &CreateRequest) -> Result<IssueView> {
     let prefix = project.prefix();
     let now = Timestamp::now();
@@ -219,6 +220,7 @@ pub fn create(project: &Project, request: &CreateRequest) -> Result<IssueView> {
         request.discovered_from.as_deref(),
     )?;
     issue.body = request.body.as_deref().map(stored).unwrap_or_default();
+    lifecycle::refuse_unfinished_creation(&issue)?;
     if issue.status.is_closed() {
         issue.closed_at = Some(now);
     }
