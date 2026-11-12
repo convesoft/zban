@@ -4,8 +4,10 @@ mod common;
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::path::Path;
 
 use common::{temp_dir, write_files};
+use zban::operations::{self, ListRequest};
 use zban::{ErrorCode, Graph, Id, Issue, IssueFile, IssueRef, Project, Status, Timestamp};
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
@@ -149,9 +151,18 @@ fn ids(issues: &[IssueRef]) -> Vec<String> {
     issues.iter().map(|found| found.id.to_string()).collect()
 }
 
+/// The issues that `list --ready` returns, in its order.
 fn ready(project: &Project) -> Vec<String> {
-    let files = project.load().unwrap();
-    ids(&Graph::new(&files).ready())
+    let request = ListRequest {
+        ready: true,
+        ..Default::default()
+    };
+    let listed = operations::list(project, &request).unwrap();
+    listed
+        .issues
+        .iter()
+        .map(|listed| listed.issue.id.to_string())
+        .collect()
 }
 
 /// The reasons of every readable issue that is not ready.
@@ -526,37 +537,26 @@ fn existing_cycles_do_not_block_unrelated_changes() {
 fn deleting_a_referenced_issue_is_refused() {
     let project = fixture("delete");
     let before = snapshot(&project);
+    let delete = |value: &str| operations::delete(&project, value);
     // B blocks on A, C stores a related link to A, and R was discovered from A.
-    let error = project.delete(&id(A)).unwrap_err();
+    let error = delete(A).unwrap_err();
     assert_eq!(error.code, ErrorCode::Referenced);
     for referrer in [B, C, R] {
         assert!(error.message.contains(referrer), "{error}");
     }
     // A parent, and an archived issue that a child names.
-    assert_eq!(
-        project.delete(&id(F)).unwrap_err().code,
-        ErrorCode::Referenced
-    );
-    assert_eq!(
-        project.delete(&id(Z)).unwrap_err().code,
-        ErrorCode::Referenced
-    );
+    assert_eq!(delete(F).unwrap_err().code, ErrorCode::Referenced);
+    assert_eq!(delete(Z).unwrap_err().code, ErrorCode::Referenced);
     assert_eq!(snapshot(&project), before);
 
     // An issue that nothing references can be deleted, even when it
     // references others itself.
-    let deleted = project.delete(&id(R)).unwrap();
-    assert!(!deleted.path.exists());
+    let deleted = delete(R).unwrap();
+    assert!(!Path::new(&deleted.path).exists());
     assert_eq!(snapshot(&project).len(), before.len() - 1);
 
-    assert_eq!(
-        project.delete(&id(UNKNOWN)).unwrap_err().code,
-        ErrorCode::NotFound
-    );
-    assert_eq!(
-        project.delete(&id(Y)).unwrap_err().code,
-        ErrorCode::Unreadable
-    );
+    assert_eq!(delete(UNKNOWN).unwrap_err().code, ErrorCode::NotFound);
+    assert_eq!(delete(Y).unwrap_err().code, ErrorCode::Unreadable);
 }
 
 // @mara implements VER-RELATIONS-READY
@@ -571,7 +571,7 @@ fn an_id_with_two_files_is_ambiguous() {
         graph.resolve(&id(M)).unwrap_err().code,
         ErrorCode::AmbiguousId
     );
-    assert!(!ids(&graph.ready()).contains(&M.to_owned()));
+    assert!(!ready(&project).contains(&M.to_owned()));
     let error = check_update(&project, C, |issue| issue.blocked_by.push(id(M))).unwrap_err();
     assert_eq!(error.code, ErrorCode::AmbiguousId);
 }
