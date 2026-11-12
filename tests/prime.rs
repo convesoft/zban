@@ -22,6 +22,11 @@ const SNAPSHOT: &str = "tests/snapshots/prime.md";
 /// way.
 const MCP_SNAPSHOT: &str = "tests/snapshots/mcp.md";
 
+/// The most characters the MCP server instructions may hold
+/// (`DES-AGENT-GUIDE`), with a margin under the 4,096 at which Claude Code
+/// truncates them.
+const MCP_BUDGET: usize = 3_800;
+
 /// Commands the guide leaves out: `init` is a one-time human action, and
 /// `prime` and `mcp` set up agents rather than serve them.
 const SETUP_COMMANDS: &[&str] = &["init", "prime", "mcp", "help"];
@@ -158,30 +163,6 @@ fn call_arguments(text: &str) -> serde_json::Map<String, Value> {
         json.push(c);
     }
     serde_json::from_str(&json).unwrap_or_else(|error| panic!("{text}: {error}"))
-}
-
-/// The parameters of a tool synopsis in the guide, such as
-/// `{id: ID, status?: S, add_tag?: [T], force?: true}`, with whether each is
-/// required and its JSON type.
-fn synopsis_params(text: &str) -> BTreeMap<String, (bool, &'static str)> {
-    let inner = text.strip_prefix('{').unwrap().strip_suffix('}').unwrap();
-    inner
-        .split(", ")
-        .map(|field| {
-            let (name, value) = field.split_once(": ").unwrap();
-            let kind = if value.starts_with('[') {
-                "array"
-            } else if value == "true" {
-                "boolean"
-            } else {
-                "string"
-            };
-            match name.strip_suffix('?') {
-                Some(name) => (name.to_owned(), (false, kind)),
-                None => (name.to_owned(), (true, kind)),
-            }
-        })
-        .collect()
 }
 
 /// The tool references in the MCP guide: each tool with the rest of its code
@@ -454,6 +435,16 @@ fn guide_covers_its_sections_within_150_lines() {
 
 // @mara implements VER-AGENT-GUIDE
 #[test]
+fn mcp_guide_fits_the_instructions_budget() {
+    let length = mcp_guide().chars().count();
+    assert!(
+        length <= MCP_BUDGET,
+        "the MCP guide has {length} characters, more than {MCP_BUDGET}"
+    );
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
 fn mcp_server_sends_the_guide_inside_a_project() {
     let (_dir, root) = project();
     let sent = instructions(&root, &[]);
@@ -498,20 +489,14 @@ fn guide_names_only_tools_and_parameters_that_exist() {
             .get(&tool)
             .unwrap_or_else(|| panic!("`{tool}` is not a tool; zban has {:?}", schemas.keys()));
         let properties = &schema["properties"];
-        let named: Vec<(String, &str)> = if rest.starts_with("{\"") {
+        let named: Vec<(String, &str)> = if rest.is_empty() {
+            Vec::new()
+        } else {
             calls += 1;
             call_arguments(&rest)
                 .iter()
                 .map(|(name, value)| (name.clone(), value_type(value)))
                 .collect()
-        } else if rest.starts_with('{') {
-            synopsis_params(&rest)
-                .into_iter()
-                .map(|(name, (_, kind))| (name, kind))
-                .collect()
-        } else {
-            assert_eq!(rest, "", "`{tool} {rest}`");
-            Vec::new()
         };
         for (name, kind) in named {
             let property = properties.get(&name).unwrap_or_else(|| {
@@ -523,42 +508,9 @@ fn guide_names_only_tools_and_parameters_that_exist() {
     }
     assert!(calls >= 10, "only {calls} calls found");
     assert!(
-        params_checked >= 60,
+        params_checked >= 20,
         "only {params_checked} parameters found"
     );
-}
-
-// @mara implements VER-AGENT-GUIDE
-#[test]
-fn guide_lists_every_tool_with_all_its_parameters() {
-    let guide = mcp_guide();
-    let reference = guide.split("\n## Reference\n").nth(1).unwrap();
-    let schemas = tool_schemas();
-    for (tool, schema) in &schemas {
-        let prefix = format!("\n- `{tool} {{");
-        let at = reference
-            .find(&prefix)
-            .unwrap_or_else(|| panic!("the reference lists no `{tool}`"));
-        let line = &reference[at + prefix.len() - 1..];
-        let synopsis = &line[..line.find('`').unwrap()];
-        let listed = synopsis_params(synopsis);
-
-        let required: BTreeSet<&str> = schema["required"]
-            .as_array()
-            .map(|names| names.iter().filter_map(Value::as_str).collect())
-            .unwrap_or_default();
-        let expected: BTreeMap<String, (bool, &str)> = schema["properties"]
-            .as_object()
-            .unwrap()
-            .iter()
-            .filter(|(name, _)| *name != "directory")
-            .map(|(name, property)| {
-                let kind = schema_type(property);
-                (name.clone(), (required.contains(name.as_str()), kind))
-            })
-            .collect();
-        assert_eq!(listed, expected, "`{tool}`");
-    }
 }
 
 // @mara implements VER-AGENT-GUIDE
@@ -566,6 +518,7 @@ fn guide_lists_every_tool_with_all_its_parameters() {
 fn guide_lists_every_option_of_each_command() {
     let guide = guide();
     let reference = guide.split("\n## Reference\n").nth(1).unwrap();
+    let schemas = tool_schemas();
     for command in commands() {
         if SETUP_COMMANDS.contains(&command.as_str()) {
             continue;
@@ -588,6 +541,27 @@ fn guide_lists_every_option_of_each_command() {
             .map(str::to_owned)
             .collect();
         assert_eq!(listed, offered, "`zban {command}`");
+
+        // The tool takes the same options as parameters, named with
+        // underscores, besides `directory` and the positional arguments.
+        let (tool, schema) = schemas
+            .iter()
+            .find(|(tool, _)| tool.split('_').next() == Some(command.as_str()))
+            .unwrap_or_else(|| panic!("no tool for `zban {command}`"));
+        let parameters: BTreeSet<String> = schema["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|name| format!("--{}", name.replace('_', "-")))
+            .collect();
+        let unlisted: Vec<_> = parameters.difference(&listed).collect();
+        assert!(listed.is_subset(&parameters), "`{tool}` lacks options");
+        assert!(
+            unlisted
+                .iter()
+                .all(|name| ["--directory", "--id", "--ids", "--title"].contains(&name.as_str())),
+            "`{tool}` takes {unlisted:?}"
+        );
 
         // Positional arguments, such as `<ID>...` in `Usage: zban show [OPTIONS] <ID>...`.
         let usage = help
@@ -612,21 +586,46 @@ fn guide_lists_every_option_of_each_command() {
     }
 }
 
+/// The line that `docs/agents.mara.md` recommends for a project's agent
+/// instructions: the Markdown block that starts with `**IMPORTANT**`, with its
+/// final line break.
+fn recommended_line() -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/agents.mara.md");
+    let documented = fs::read_to_string(path).unwrap();
+    let fence = "```markdown\n";
+    let start = documented
+        .find(&format!("{fence}**IMPORTANT**"))
+        .expect("docs/agents.mara.md recommends an **IMPORTANT** line")
+        + fence.len();
+    let end = start + documented[start..].find("\n```\n").unwrap() + 1;
+    documented[start..end].to_owned()
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn setup_line_names_the_heading_the_guide_starts_with() {
+    let line = recommended_line();
+    assert!(line.contains("`# zban workflow`"), "{line}");
+    assert!(line.contains("`zban prime`"), "{line}");
+    for guide in guides() {
+        assert!(guide.starts_with("# zban workflow\n"), "{guide}");
+    }
+    let outside = temp_dir();
+    let note = instructions(outside.path(), &[]);
+    assert!(!note.contains("# zban workflow"), "{note}");
+}
+
 /// For `VAL-DOGFOOD`: this repository's `AGENTS.md` loads the guide with the
-/// line that `docs/agents.mara.md` recommends, and `zban prime` prints the
-/// guide here.
+/// line that `docs/agents.mara.md` recommends, as a paragraph of its own, and
+/// `zban prime` prints the guide here.
 #[test]
 fn this_repository_loads_the_guide() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let documented = fs::read_to_string(root.join("docs/agents.mara.md")).unwrap();
-    let line = documented
-        .lines()
-        .find(|line| line.starts_with("**IMPORTANT**") && line.contains("`zban prime`"))
-        .expect("docs/agents.mara.md recommends a `zban prime` line");
+    let line = recommended_line();
     let agents = fs::read_to_string(root.join("AGENTS.md")).unwrap();
     assert!(
-        agents.lines().any(|agents_line| agents_line == line),
-        "AGENTS.md lacks {line:?}"
+        agents.contains(&format!("\n\n{line}\n")),
+        "AGENTS.md lacks the recommended line:\n{line}"
     );
 
     let expected = fs::read_to_string(root.join(SNAPSHOT)).unwrap();

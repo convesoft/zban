@@ -9,15 +9,22 @@ The server's instructions carry the agent guide, and clients such as Claude Code
 keep them in context across compaction. Started outside a zban project, the
 server sends only a short note instead of the full guide.
 
-**Without MCP** (CLI-only agents, CI jobs, clients that ignore server
-instructions): make the agent read `zban prime`. Add this line to your
-`AGENTS.md` or `CLAUDE.md`:
+**In your agent instructions**: add this line to your `AGENTS.md` or `CLAUDE.md`,
+so that agents without the guide read it from `zban prime`:
 
 ```markdown
-**IMPORTANT**: before you do anything else, run `zban prime` and follow its output.
+**IMPORTANT**: this project tracks its work with zban. If your instructions already
+contain the zban workflow guide (it starts with `# zban workflow`), for example from
+the zban MCP server, follow it and use the zban tools. Otherwise, before anything
+else, run `zban prime` and follow its output.
 ```
 
-Or, in Claude Code, inject it automatically with hooks in `.claude/settings.json`:
+An agent with the MCP server finds the guide in its instructions and skips
+`zban prime`, so it does not read the guide twice. CLI-only agents, CI jobs and
+clients that ignore server instructions run `zban prime`.
+
+**Without MCP**, Claude Code can instead inject the guide with hooks in
+`.claude/settings.json`:
 
 ```json
 {
@@ -29,7 +36,8 @@ Or, in Claude Code, inject it automatically with hooks in `.claude/settings.json
 ```
 
 `zban prime` prints nothing outside a zban project, so these hooks can also go in
-your user-level settings.
+your user-level settings. A hook adds the guide even when the MCP server has sent
+it, so do not combine the hooks with the server.
 
 > **Known limitation:** zban decides whether to deliver the guide from the
 > directory where the session starts. If you start your agent in a folder above
@@ -88,7 +96,7 @@ issues, and zban cannot tell which issue a new session is about.
 :status: accepted
 :satisfies: NEED-AGENT-ONBOARDING
 
-zban provides an agent workflow guide through `zban prime` and through the MCP server instructions. Both deliver the full guide only when a project is found, so sessions outside zban projects carry almost none of it. Both come from one source text and name the operations the way the surface does: commands for the CLI, tools for MCP. The vocabulary in the guide comes from the binary itself, so it cannot disagree with the binary.
+zban provides an agent workflow guide through `zban prime` and through the MCP server instructions. Both deliver the full guide only when a project is found, so sessions outside zban projects carry almost none of it. Both come from one source text and name the operations the way the surface does: commands for the CLI, tools for MCP. An agent can tell from its own context whether it already has the guide, so a project's agent instructions can load it through `zban prime` only where it is missing. The vocabulary in the guide comes from the binary itself, so it cannot disagree with the binary.
 :::
 
 :::mara requirement REQ-HANDOFF
@@ -109,7 +117,7 @@ An issue can hold one handoff note in its body. An update writes the note, repla
 :satisfies: REQ-AGENT-GUIDE
 :mitigates: RISK-SESSION-ABOVE-PROJECT
 
-The guide is one template compiled into the binary and kept under about 150 lines, because it is paid for in every agent context. Its sections are:
+The guide is one template compiled into the binary and kept under about 150 lines, because it is paid for in every agent context. The MCP rendering also stays within 3,800 characters, a margin under the 4,096 at which Claude Code truncates server instructions. It leaves out what the tool schemas carry, such as each tool's parameters, and both renderings share tight wording rather than diverging text. Its sections are:
 
 1. **Track work in zban.** Use issues instead of ad-hoc todo lists.
 2. **Before starting.** Look for an existing issue, otherwise create one; set it `in-progress`.
@@ -118,11 +126,13 @@ The guide is one template compiled into the binary and kept under about 150 line
 5. **Committing.** Commit issue files together with the code they describe.
 6. **Handoffs.** Writing and resuming handoff notes, as in [[DES-HANDOFF]].
 7. **Finding work.** Use the ready list and offer the top candidates; show an issue before starting it.
-8. **Reference.** Types, statuses, priorities, relations, the readiness rule, and the operations with their key options.
+8. **Reference.** Types, statuses, priorities, relations and the readiness rule. The command-line rendering also lists every command with its options; the MCP rendering leaves the tools' parameters to their schemas.
 
 The MCP rendering also tells agents to pass `directory` on every call when they work in a worktree or outside the directory the server started in.
 
 Delivery depends on the project found where the surface starts: from the working directory or `-C` for `prime`, and from the server's `-C` or working directory at startup for MCP. With a project, both deliver the full guide; a project whose configuration is invalid still counts, because the guide does not depend on it. Without one, `prime` prints nothing, and the MCP server sends a short note of a few lines instead: zban tracks issues in `.zban/` directories, no project was found where the server started, tools take `directory`, and `zban prime -C <dir>` prints the full guide.
+
+Both renderings open with the heading `# zban workflow`, and the line that the setup guidance recommends for a project's agent instructions names it: an agent whose instructions already hold the guide, for example from the MCP server, follows it and uses the tools, and any other agent runs `zban prime`. An agent with both the server and the line therefore reads the guide once, with the operations of the surface it has.
 
 Project-specific conventions are deliberately left out; projects add them in their own agent instructions.
 :::

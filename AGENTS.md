@@ -1,15 +1,19 @@
 # Agent instructions
 
-**IMPORTANT**: before you do anything else, run `zban prime` and follow its output.
+**IMPORTANT**: this project tracks its work with zban. If your instructions already
+contain the zban workflow guide (it starts with `# zban workflow`), for example from
+the zban MCP server, follow it and use the zban tools. Otherwise, before anything
+else, run `zban prime` and follow its output.
 
-Use the `zban` on your `PATH`, installed from a GitHub release (see
-`README.md`) or with `cargo install --path . --locked` from this checkout, and
-the zban MCP server configured in `.mcp.json`, which starts `zban mcp` from
+Use the zban MCP server configured in `.mcp.json`, which starts `zban mcp` from
 `PATH`. In a worktree, pass `directory` on every MCP call or start the session
-in that worktree. Use `cargo run -q -- <command>` only to try out an unreleased
-change to zban itself that the task depends on, such as a new option or a
-changed issue format; the installed `zban` reads and writes the same issue
-format as `main`. The rules below add to the guide.
+in that worktree. Without MCP, use the `zban` command line. Both run the `zban`
+on your `PATH`, installed from a GitHub release (see `README.md`) or with
+`cargo install --path . --locked` from this checkout. Use
+`cargo run -q -- <command>` only to try out an unreleased change to zban itself
+that the task depends on, such as a new option or a changed issue format; the
+installed `zban` reads and writes the same issue format as `main`. The rules
+below add to the guide.
 
 ## Project
 
@@ -55,8 +59,9 @@ repository, also:
   the pull request covers it. Pull requests are merged only once CI is green, so
   the issue reaches `main` closed only if the check passed. If CI fails, fix it
   in the same pull request.
-- Create issues only with `zban create`, which generates an ID that is unused in
-  `.zban/` and `.zban/archive/`. Never choose an ID yourself.
+- Create issues only with `zban create` or the `create_issue` tool, which
+  generate an ID that is unused in `.zban/` and `.zban/archive/`. Never choose
+  an ID yourself.
 - Keep to one issue per pull request: file newly discovered work as a new issue
   with `--discovered-from` rather than widening the current one.
 
