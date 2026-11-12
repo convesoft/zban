@@ -33,8 +33,8 @@ fn generated_ids_match_the_pattern() {
         assert_eq!(seen_characters.len(), 32, "every character is drawn");
     }
 
-    let root = temp_dir("generated-ids");
-    let project = Project::init(&root, Some("web")).unwrap();
+    let dir = temp_dir();
+    let project = Project::init(dir.path(), Some("web")).unwrap();
     for _ in 0..20 {
         let file = project
             .create(&Issue::new("Generated", Timestamp::now()))
@@ -49,8 +49,8 @@ fn generated_ids_match_the_pattern() {
 // @mara implements VER-ID-GENERATION
 #[test]
 fn create_draws_again_when_the_id_exists_in_either_directory() {
-    let root = temp_dir("id-retry");
-    let project = Project::init(&root, None).unwrap();
+    let dir = temp_dir();
+    let project = Project::init(dir.path(), None).unwrap();
     let id = |value: &str| Id::parse(project.prefix(), value).unwrap();
     let open = Issue::new("Open", Timestamp::now());
     let closed = Issue {
@@ -86,16 +86,18 @@ fn create_draws_again_when_the_id_exists_in_either_directory() {
 // @mara implements VER-ID-GENERATION
 #[test]
 fn init_without_prefix_writes_zb() {
-    let root = temp_dir("init-default-prefix");
-    let output = zban(&root, &["init"]);
+    let dir = temp_dir();
+    let root = dir.path();
+    let output = zban(root, &["init"]);
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         fs::read_to_string(root.join(".zban/config.toml")).unwrap(),
         "format_version = 1\nprefix = \"zb\"\n"
     );
 
-    let root = temp_dir("init-own-prefix");
-    let output = zban(&root, &["init", "--prefix", "web2"]);
+    let dir = temp_dir();
+    let root = dir.path();
+    let output = zban(root, &["init", "--prefix", "web2"]);
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         fs::read_to_string(root.join(".zban/config.toml")).unwrap(),
@@ -106,9 +108,10 @@ fn init_without_prefix_writes_zb() {
 // @mara implements VER-ID-GENERATION
 #[test]
 fn init_rejects_an_invalid_prefix_without_creating_zban() {
-    let root = temp_dir("init-invalid-prefix");
+    let dir = temp_dir();
+    let root = dir.path();
     for prefix in ["", "Zb", "2b", "z-b", "z_b", "toolongpx", "zé"] {
-        let output = zban(&root, &["init", "--prefix", prefix]);
+        let output = zban(root, &["init", "--prefix", prefix]);
         assert_eq!(output.status.code(), Some(1), "{prefix:?}");
         assert!(stderr(&output).contains("invalid_value"), "{prefix:?}");
         assert!(!root.join(".zban").exists(), "{prefix:?}");

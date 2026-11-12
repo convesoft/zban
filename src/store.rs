@@ -639,14 +639,17 @@ impl Drop for Staged {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::TempDir;
+
     use super::*;
     use crate::timestamp::Timestamp;
 
-    fn temp_project(name: &str) -> Project {
-        let dir = std::env::temp_dir().join(format!("zban-store-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        Project::init(&dir, None).unwrap()
+    /// A new project in a fresh directory, which lasts as long as the
+    /// returned [`TempDir`].
+    fn temp_project() -> (TempDir, Project) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = Project::init(dir.path(), None).unwrap();
+        (dir, project)
     }
 
     fn entries(dir: &Path) -> Vec<String> {
@@ -661,7 +664,7 @@ mod tests {
     // @mara implements VER-ISSUE-FILES
     #[test]
     fn interrupted_write_leaves_the_original_and_no_partial_issue() {
-        let project = temp_project("interrupted");
+        let (_dir, project) = temp_project();
         let created = project
             .create(&Issue::new("Original", Timestamp::now()))
             .unwrap();
@@ -689,13 +692,12 @@ mod tests {
         );
         let loaded = project.load().unwrap();
         assert_eq!(loaded, vec![created]);
-        fs::remove_dir_all(project.root()).unwrap();
     }
 
     // @mara implements VER-CHECK
     #[test]
     fn check_reports_and_fix_deletes_what_interrupted_writes_leave() {
-        let project = temp_project("leftovers");
+        let (_dir, project) = temp_project();
         let created = project
             .create(&Issue::new("Original", Timestamp::now()))
             .unwrap();
@@ -721,12 +723,11 @@ mod tests {
         assert_eq!(Project::check(project.root(), true).unwrap(), Vec::new());
         let after = (entries(&project.dir()), entries(&project.archive_dir()));
         assert_eq!(after, before);
-        fs::remove_dir_all(project.root()).unwrap();
     }
 
     #[test]
     fn failed_writes_remove_their_temporary_file() {
-        let project = temp_project("cleanup");
+        let (_dir, project) = temp_project();
         let created = project
             .create(&Issue::new("Original", Timestamp::now()))
             .unwrap();
@@ -740,7 +741,6 @@ mod tests {
             names.iter().all(|name| !name.ends_with(".tmp")),
             "{names:?}"
         );
-        fs::remove_dir_all(project.root()).unwrap();
     }
 
     // @mara implements VER-ISSUE-FILES

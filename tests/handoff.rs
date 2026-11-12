@@ -10,6 +10,7 @@ use std::process::Output;
 use common::mcp::Client;
 use common::{snapshot, stderr, stdout, temp_dir, write_files, zban, zban_with_input};
 use serde_json::{Value, json};
+use tempfile::TempDir;
 use zban::Timestamp;
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
@@ -22,9 +23,11 @@ const C: &str = "zb-cccccc";
 const HEADER: &str = "---\ntitle: Parse files\nstatus: in-progress\ntype: task\n\
                       created_at: 2026-01-01T00:00:01Z\nestimate: 3\n---\n";
 
-/// A project whose issue A has `body`.
-fn project(name: &str, body: &str) -> PathBuf {
-    let root = temp_dir(&format!("handoff-{name}"));
+/// A project whose issue A has `body`, in a directory that lasts as long as
+/// the returned [`TempDir`], and its root.
+fn project(body: &str) -> (TempDir, PathBuf) {
+    let dir = temp_dir();
+    let root = dir.path().to_owned();
     write_files(
         &root,
         &[
@@ -32,7 +35,7 @@ fn project(name: &str, body: &str) -> PathBuf {
             (".zban/zb-aaaaaa.md", &format!("{HEADER}\n{body}")),
         ],
     );
-    root
+    (dir, root)
 }
 
 fn read(root: &Path) -> String {
@@ -100,7 +103,7 @@ fn written_at(text: &str, before: &Timestamp) -> String {
 // @mara implements VER-HANDOFF
 #[test]
 fn writes_replaces_and_removes_the_note() {
-    let root = project("write", "Intro.\n\n- [x] Step\n");
+    let (_dir, root) = project("Intro.\n\n- [x] Step\n");
     let before = Timestamp::now();
 
     // Added to a body without one, after a blank line.
@@ -170,7 +173,7 @@ fn writes_replaces_and_removes_the_note() {
 // @mara implements VER-HANDOFF
 #[test]
 fn rejects_headings_that_would_end_the_note() {
-    let root = project("headings", "Intro.\n");
+    let (_dir, root) = project("Intro.\n");
     for text in [
         "- Next: x\n## Next steps\n- y",
         "# Title",
@@ -199,7 +202,7 @@ fn rejects_headings_that_would_end_the_note() {
 #[test]
 fn a_handoff_heading_in_a_fenced_code_block_is_ignored() {
     let example = "Example:\n\n```markdown\n## Handoff (2026-01-01T00:00:00Z)\n\nOld\n```\n";
-    let root = project("fenced", example);
+    let (_dir, root) = project(example);
     assert_eq!(shown(&root, A)["handoff"], Value::Null);
     assert_eq!(handoff_times(&root), [(A.to_owned(), Value::Null)]);
 
@@ -220,7 +223,7 @@ fn a_handoff_heading_in_a_fenced_code_block_is_ignored() {
 #[test]
 fn a_body_with_an_unclosed_fence_refuses_the_note() {
     let body = "Example:\n\n```sh\necho open\n";
-    let root = project("unclosed", body);
+    let (_dir, root) = project(body);
     for args in [
         &["--handoff", "New"][..],
         &["--title", "Renamed", "--handoff", "New"],
@@ -261,7 +264,7 @@ Indented four columns outside a list item, a fence line opens no block:
 
 ";
     let body = format!("{before_note}## Handoff (2026-02-02T00:00:00Z)\n\nOld\n");
-    let root = project("indented-fence", &body);
+    let (_dir, root) = project(&body);
     assert_eq!(
         shown(&root, A)["handoff"],
         json!({"written_at": "2026-02-02T00:00:00Z", "text": "Old\n"})
@@ -287,7 +290,7 @@ Indented four columns outside a list item, a fence line opens no block:
 #[test]
 fn several_handoff_sections_make_both_edits_fail() {
     let body = "## Handoff\n\nOne\n\n## Handoff (2026-01-01T00:00:00Z)\n\nTwo\n";
-    let root = project("several", body);
+    let (_dir, root) = project(body);
     for args in [&["--handoff", "Three"][..], &["--no-handoff"]] {
         let args = [&["update", A], args].concat();
         assert_eq!(refused(&root, &args), "invalid_handoff", "{args:?}");
@@ -303,7 +306,7 @@ fn several_handoff_sections_make_both_edits_fail() {
 // @mara implements VER-HANDOFF
 #[test]
 fn show_and_list_report_the_note_and_its_time() {
-    let root = project("read", "## Handoff\n\n- Next: undated\n");
+    let (_dir, root) = project("## Handoff\n\n- Next: undated\n");
     let issue = |title: &str, body: &str| {
         format!(
             "---\ntitle: {title}\nstatus: todo\ntype: task\ncreated_at: 2026-01-01T00:00:02Z\n---\n\n{body}"
@@ -360,7 +363,7 @@ fn show_and_list_report_the_note_and_its_time() {
 // @mara implements VER-HANDOFF
 #[test]
 fn closing_leaves_the_handoff_untouched() {
-    let root = project("close", "Intro.\n");
+    let (_dir, root) = project("Intro.\n");
     ok(
         &root,
         &["update", A, "--handoff", "- Rejected: a generic YAML value"],
@@ -380,7 +383,7 @@ fn closing_leaves_the_handoff_untouched() {
 #[test]
 fn prime_and_the_mcp_instructions_carry_no_handoff_notes() {
     let marker = "Unique handoff marker 7f3a";
-    let root = project("prime", "Intro.\n");
+    let (_dir, root) = project("Intro.\n");
     ok(&root, &["update", A, "--handoff", marker]);
     assert!(read(&root).contains(marker));
 

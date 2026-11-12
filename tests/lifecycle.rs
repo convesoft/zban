@@ -6,15 +6,19 @@ use std::fs;
 use std::path::PathBuf;
 
 use common::{temp_dir, write_files};
+use tempfile::TempDir;
 use zban::{Checklist, ErrorCode, Id, Issue, IssueFile, Project, Status, Timestamp};
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
 
-fn fixture(name: &str, files: &[(&str, &str)]) -> Project {
-    let root = temp_dir(&format!("lifecycle-{name}"));
-    write_files(&root, &[(".zban/config.toml", CONFIG)]);
-    write_files(&root, files);
-    Project::open(&root).unwrap()
+/// A project holding `files`, in a directory that lasts as long as the
+/// returned [`TempDir`].
+fn fixture(files: &[(&str, &str)]) -> (TempDir, Project) {
+    let dir = temp_dir();
+    write_files(dir.path(), &[(".zban/config.toml", CONFIG)]);
+    write_files(dir.path(), files);
+    let project = Project::open(dir.path()).unwrap();
+    (dir, project)
 }
 
 /// An issue file with `status`, extra header lines and `body`.
@@ -96,10 +100,7 @@ fn snapshot(project: &Project) -> Vec<(PathBuf, Vec<u8>)> {
 #[test]
 fn done_with_an_unchecked_task_item_fails_and_changes_nothing_unless_forced() {
     let body = "- [x] Read frontmatter\n- [ ] Preserve unknown keys\n";
-    let project = fixture(
-        "unchecked",
-        &[(".zban/zb-aaaaaa.md", &file_text("in-progress", "", body))],
-    );
+    let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", &file_text("in-progress", "", body))]);
     let before = snapshot(&project);
 
     let error = set_status(&project, "zb-aaaaaa", Status::Done, false).unwrap_err();
@@ -134,10 +135,7 @@ fn task_items_inside_fenced_code_blocks_do_not_count() {
 ```
 + [ ] an unclosed fence runs to the end of the body
 ";
-    let project = fixture(
-        "fenced",
-        &[(".zban/zb-aaaaaa.md", &file_text("todo", "", body))],
-    );
+    let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", &file_text("todo", "", body))]);
     let files = load(&project);
     assert_eq!(
         find(&files, "zb-aaaaaa")
@@ -172,10 +170,7 @@ Indented four columns outside a list item, a fence line opens no block:
       ```
 - [ ] Release
 ";
-    let project = fixture(
-        "fence-indentation",
-        &[(".zban/zb-aaaaaa.md", &file_text("todo", "", body))],
-    );
+    let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", &file_text("todo", "", body))]);
     let files = load(&project);
     assert_eq!(
         find(&files, "zb-aaaaaa")
@@ -205,43 +200,34 @@ fn every_task_item_form_counts() {
         "\t- [ ] tab",
     ] {
         let body = format!("- [x] Checked\n{item}\n");
-        let project = fixture(
-            "item-forms",
-            &[(".zban/zb-aaaaaa.md", &file_text("todo", "", &body))],
-        );
+        let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", &file_text("todo", "", &body))]);
         let error = set_status(&project, "zb-aaaaaa", Status::Done, false).unwrap_err();
         assert_eq!(error.code, ErrorCode::UncheckedItems, "{item:?}");
     }
     let body = "- [x] lower\n* [X] upper\n1. [ ] ordered lists are not task items\n";
-    let project = fixture(
-        "checked-forms",
-        &[(".zban/zb-aaaaaa.md", &file_text("todo", "", body))],
-    );
+    let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", &file_text("todo", "", body))]);
     set_status(&project, "zb-aaaaaa", Status::Done, false).unwrap();
 }
 
 // @mara implements VER-LIFECYCLE
 #[test]
 fn closing_with_an_open_child_fails_names_it_and_changes_nothing() {
-    let project = fixture(
-        "open-children",
-        &[
-            (".zban/zb-aaaaaa.md", &file_text("todo", "", "")),
-            (
-                ".zban/zb-bbbbbb.md",
-                &file_text("todo", "parent: zb-aaaaaa\n", ""),
-            ),
-            (
-                ".zban/zb-cccccc.md",
-                &file_text("draft", "parent: zb-aaaaaa\n", ""),
-            ),
-            (
-                ".zban/archive/zb-dddddd.md",
-                &file_text("done", "parent: zb-aaaaaa\n", ""),
-            ),
-            (".zban/zb-eeeeee.md", &file_text("in-progress", "", "")),
-        ],
-    );
+    let (_dir, project) = fixture(&[
+        (".zban/zb-aaaaaa.md", &file_text("todo", "", "")),
+        (
+            ".zban/zb-bbbbbb.md",
+            &file_text("todo", "parent: zb-aaaaaa\n", ""),
+        ),
+        (
+            ".zban/zb-cccccc.md",
+            &file_text("draft", "parent: zb-aaaaaa\n", ""),
+        ),
+        (
+            ".zban/archive/zb-dddddd.md",
+            &file_text("done", "parent: zb-aaaaaa\n", ""),
+        ),
+        (".zban/zb-eeeeee.md", &file_text("in-progress", "", "")),
+    ]);
     let before = snapshot(&project);
     for status in [Status::Done, Status::Cancelled] {
         let error = set_status(&project, "zb-aaaaaa", status, false).unwrap_err();
@@ -267,16 +253,13 @@ fn closing_with_an_open_child_fails_names_it_and_changes_nothing() {
 #[test]
 fn forced_close_leaves_the_open_child_unchanged() {
     let child = file_text("in-progress", "parent: zb-aaaaaa\n", "- [ ] Child work\n");
-    let project = fixture(
-        "forced-children",
-        &[
-            (
-                ".zban/zb-aaaaaa.md",
-                &file_text("todo", "", "- [ ] Parent work\n"),
-            ),
-            (".zban/zb-bbbbbb.md", &child),
-        ],
-    );
+    let (_dir, project) = fixture(&[
+        (
+            ".zban/zb-aaaaaa.md",
+            &file_text("todo", "", "- [ ] Parent work\n"),
+        ),
+        (".zban/zb-bbbbbb.md", &child),
+    ]);
     let closed = set_status(&project, "zb-aaaaaa", Status::Cancelled, true).unwrap();
     assert_eq!(closed.path, archive_path(&project, "zb-aaaaaa"));
     assert_eq!(
@@ -285,13 +268,10 @@ fn forced_close_leaves_the_open_child_unchanged() {
     );
 
     // Cancelling with unchecked task items needs no force; only done does.
-    let project = fixture(
-        "cancel-unchecked",
-        &[(
-            ".zban/zb-aaaaaa.md",
-            &file_text("todo", "", "- [ ] Never\n"),
-        )],
-    );
+    let (_dir, project) = fixture(&[(
+        ".zban/zb-aaaaaa.md",
+        &file_text("todo", "", "- [ ] Never\n"),
+    )]);
     set_status(&project, "zb-aaaaaa", Status::Cancelled, false).unwrap();
 }
 
@@ -299,7 +279,7 @@ fn forced_close_leaves_the_open_child_unchanged() {
 #[test]
 fn closing_archives_and_reopening_moves_back() {
     let original = "---\ntitle: Issue\nstatus: in-progress\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\ncustom: kept\n---\n\n- [x] Done\n\nBody bytes   \r\nstay as they are";
-    let project = fixture("archive", &[(".zban/zb-aaaaaa.md", original)]);
+    let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", original)]);
     let start = Timestamp::now();
 
     let closed = set_status(&project, "zb-aaaaaa", Status::Done, false).unwrap();
@@ -337,13 +317,10 @@ fn closing_archives_and_reopening_moves_back() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn one_update_can_check_the_last_item_append_a_summary_and_close() {
-    let project = fixture(
-        "checked-state",
-        &[(
-            ".zban/zb-aaaaaa.md",
-            &file_text("in-progress", "", "- [x] One\n- [ ] Two\n"),
-        )],
-    );
+    let (_dir, project) = fixture(&[(
+        ".zban/zb-aaaaaa.md",
+        &file_text("in-progress", "", "- [x] One\n- [ ] Two\n"),
+    )]);
     let closed = save(&project, "zb-aaaaaa", false, |issue| {
         issue.body = issue.body.replace("- [ ] Two", "- [x] Two");
         issue
@@ -368,10 +345,7 @@ fn one_update_can_check_the_last_item_append_a_summary_and_close() {
 
     // The rules look at the issue as the request leaves it, so unchecking an
     // item in the same request that sets done is refused.
-    let project = fixture(
-        "unchecked-state",
-        &[(".zban/zb-aaaaaa.md", &file_text("todo", "", "- [x] One\n"))],
-    );
+    let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", &file_text("todo", "", "- [x] One\n"))]);
     let error = save(&project, "zb-aaaaaa", false, |issue| {
         issue.body = "- [ ] One\n".into();
         issue.status = Status::Done;
@@ -383,13 +357,10 @@ fn one_update_can_check_the_last_item_append_a_summary_and_close() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn changes_among_closed_statuses_keep_closed_at_and_the_archive() {
-    let project = fixture(
-        "closed-to-closed",
-        &[(
-            ".zban/archive/zb-aaaaaa.md",
-            &file_text("done", "", "- [ ] Left open by a forced close\n"),
-        )],
-    );
+    let (_dir, project) = fixture(&[(
+        ".zban/archive/zb-aaaaaa.md",
+        &file_text("done", "", "- [ ] Left open by a forced close\n"),
+    )]);
     let cancelled = set_status(&project, "zb-aaaaaa", Status::Cancelled, false).unwrap();
     assert_eq!(cancelled.path, archive_path(&project, "zb-aaaaaa"));
     let closed_at = Timestamp::parse("2026-11-12T08:00:00Z");
@@ -413,21 +384,18 @@ fn changes_among_closed_statuses_keep_closed_at_and_the_archive() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn archived_issues_stay_loaded_and_closed_children_do_not_block() {
-    let project = fixture(
-        "archived-relations",
-        &[
-            (".zban/zb-aaaaaa.md", &file_text("todo", "", "")),
-            (
-                ".zban/zb-bbbbbb.md",
-                &file_text(
-                    "todo",
-                    "parent: zb-aaaaaa\nblocked_by:\n  - zb-cccccc\n",
-                    "- [x] One\n- [ ] Two\n",
-                ),
+    let (_dir, project) = fixture(&[
+        (".zban/zb-aaaaaa.md", &file_text("todo", "", "")),
+        (
+            ".zban/zb-bbbbbb.md",
+            &file_text(
+                "todo",
+                "parent: zb-aaaaaa\nblocked_by:\n  - zb-cccccc\n",
+                "- [x] One\n- [ ] Two\n",
             ),
-            (".zban/zb-cccccc.md", &file_text("in-progress", "", "")),
-        ],
-    );
+        ),
+        (".zban/zb-cccccc.md", &file_text("in-progress", "", "")),
+    ]);
     set_status(&project, "zb-bbbbbb", Status::Cancelled, false).unwrap();
     set_status(&project, "zb-aaaaaa", Status::Done, false).unwrap();
 
@@ -461,13 +429,10 @@ fn archived_issues_stay_loaded_and_closed_children_do_not_block() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn a_taken_target_name_fails_with_ambiguous_id_and_changes_nothing() {
-    let project = fixture(
-        "taken-target",
-        &[
-            (".zban/zb-aaaaaa.md", &file_text("todo", "", "")),
-            (".zban/archive/zb-aaaaaa.md", &file_text("done", "", "")),
-        ],
-    );
+    let (_dir, project) = fixture(&[
+        (".zban/zb-aaaaaa.md", &file_text("todo", "", "")),
+        (".zban/archive/zb-aaaaaa.md", &file_text("done", "", "")),
+    ]);
     let before = snapshot(&project);
     let files = load(&project);
     let open = files.iter().find(|file| !file.archived).unwrap();
@@ -483,10 +448,7 @@ fn a_taken_target_name_fails_with_ambiguous_id_and_changes_nothing() {
 fn a_misplaced_file_ends_where_its_new_status_belongs() {
     // A close whose move was interrupted leaves a done issue in `.zban/`.
     // Reopening it needs no move, and closing it again archives it.
-    let project = fixture(
-        "misplaced",
-        &[(".zban/zb-aaaaaa.md", &file_text("done", "", ""))],
-    );
+    let (_dir, project) = fixture(&[(".zban/zb-aaaaaa.md", &file_text("done", "", ""))]);
     let reopened = set_status(&project, "zb-aaaaaa", Status::Todo, false).unwrap();
     assert_eq!(reopened.path, open_path(&project, "zb-aaaaaa"));
     let closed = set_status(&project, "zb-aaaaaa", Status::Done, false).unwrap();
@@ -506,13 +468,10 @@ fn a_misplaced_file_ends_where_its_new_status_belongs() {
 // @mara implements VER-LIFECYCLE
 #[test]
 fn an_unreadable_file_fails_with_unreadable() {
-    let project = fixture(
-        "unreadable",
-        &[(
-            ".zban/zb-aaaaaa.md",
-            "---\ntitle: T\nstatus: open\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\n---\n",
-        )],
-    );
+    let (_dir, project) = fixture(&[(
+        ".zban/zb-aaaaaa.md",
+        "---\ntitle: T\nstatus: open\ntype: task\ncreated_at: 2026-11-11T20:00:00Z\n---\n",
+    )]);
     let files = load(&project);
     let file = find(&files, "zb-aaaaaa");
     let issue = Issue::new("T", Timestamp::now());
