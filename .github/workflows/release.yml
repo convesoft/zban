@@ -70,11 +70,12 @@ jobs:
             exit 1
           fi
       - run: cargo build --release --locked --target ${{ matrix.target }}
-      # Runs the test suite on the commit being released, once per platform: the
-      # cross-compiled entry shares its runner with a native one.
+      # Runs the test suite on the commit being released, for each target it
+      # ships whose binary the runner can run: the cross-compiled entry shares
+      # its runner with a native one.
       - name: Test
         if: matrix.native
-        run: cargo test --locked
+        run: cargo test --locked --target ${{ matrix.target }}
       # Runs the main commands in a scratch project outside the checkout, so
       # that zban cannot find this repository's own `.zban/`.
       - name: Smoke-test the binary

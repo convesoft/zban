@@ -1,6 +1,6 @@
 ---
 title: Make the locking unit test pass on the musl release targets
-status: todo
+status: in-progress
 type: bug
 discovered_from: zb-zqn4z3
 created_at: 2026-11-12T15:26:03Z
@@ -12,6 +12,6 @@ Reproduce with `rustup target add x86_64-unknown-linux-musl` and `cargo test --r
 
 Because of this, the Test step in `release.yml` runs `cargo test --locked` for the runner's own target, not for the musl target the release ships.
 
-- [ ] Make the test's message check independent of the C library, for example by ignoring letter case
-- [ ] Run the Test step in `release.yml` with `--target ${{ matrix.target }}`, so that a release tests the targets it ships
+- [x] Make the test's message check independent of the C library, for example by ignoring letter case
+- [x] Run the Test step in `release.yml` with `--target ${{ matrix.target }}`, so that a release tests the targets it ships
 - [ ] `cargo test --locked --target x86_64-unknown-linux-musl` passes locally, and all four Build jobs pass on a build-only run of `release.yml`
