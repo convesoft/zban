@@ -125,9 +125,11 @@ cargo test
 mara schema validate && mara project validate
 ```
 
-Pushing a tag `vX.Y.Z` that matches the version in `Cargo.toml` runs
-[`release.yml`](.github/workflows/release.yml), which builds the binaries and
-creates the GitHub release.
+Pushing a tag `vX.Y.Z` that matches the version in `Cargo.toml` on a commit of
+`main` runs [`release.yml`](.github/workflows/release.yml), which runs the
+tests, builds the binaries and creates the GitHub release. A tag that names
+another version or a commit outside `main` fails the run, and no release is
+created.
 
 ## License
 
