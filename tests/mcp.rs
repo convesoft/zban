@@ -395,6 +395,18 @@ fn invalid_arguments_give_the_same_error_codes() {
             json!({"ready": "yes"}),
             "usage",
         ),
+        (
+            &["list", "--parent", "zb-zzzzzz"],
+            "list_issues",
+            json!({"parent": "zb-zzzzzz"}),
+            "not_found",
+        ),
+        (
+            &["list", "--parent", "nonsense"],
+            "list_issues",
+            json!({"parent": "nonsense"}),
+            "not_found",
+        ),
         (&["show"], "show_issues", json!({}), "usage"),
         (
             &["show", "zb-zzzzzz"],
