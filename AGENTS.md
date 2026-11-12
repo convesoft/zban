@@ -98,3 +98,9 @@ Remove a page's "not implemented yet" note once the feature works.
 Use Conventional Commits without a scope (`<type>: <imperative summary>`), and add a
 `Refs: zb-xxxxxx` footer naming the issue(s) involved. Mark breaking changes
 with `!`.
+
+Pull requests are squash-merged, one issue per pull request. The title follows
+the commit format above and becomes the commit subject on `main`. The
+description becomes the commit body: fill in `.github/pull_request_template.md`,
+tick only the checks you actually ran, link follow-up issues under known
+limitations, and complete the `Refs:` footer.
