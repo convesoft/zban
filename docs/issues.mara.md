@@ -277,6 +277,8 @@ prefix = "zb"        # ID prefix: 1-8 lowercase ASCII letters or digits, startin
 
 Unknown configuration keys are errors. `zban init` creates the directory and the configuration. The prefix is `zb` unless `--prefix` gives another one; a value that breaks the prefix rule above is rejected. zban finds the project by walking up from the working directory to the nearest `.zban/config.toml`, as far as the filesystem root. The global `-C, --directory DIR` option makes zban behave as if started in `DIR`: the search starts there, and `init` creates `.zban/` there.
 
+`init` works inside an existing project too and creates a nested project there. Commands run at or below the nested root then find the nested project and no longer see the enclosing one, so `init` names the enclosing project: the nearest directory above the new root that holds `.zban/config.toml` ([[DES-CLI]]).
+
 Every `*.md` file directly inside `.zban/` or `.zban/archive/` is an issue. Other files and subdirectories are ignored, except that `zban check` reports the temporary files of interrupted writes ([[DES-CHECK]]). Open issues (`draft`, `todo`, `in-progress`) belong in `.zban/`, and closed issues (`done`, `cancelled`) belong in `.zban/archive/`.
 :::
 
