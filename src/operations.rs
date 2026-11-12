@@ -15,9 +15,11 @@ use serde::Serialize;
 use crate::check::Finding;
 use crate::error::{Error, ErrorCode, Result};
 use crate::guide::Surface;
+use crate::handoff::{self, Handoff};
 use crate::id::{Id, Prefix};
 use crate::issue::{Issue, IssueType, Priority, Severity, Status};
 use crate::lifecycle::Checklist;
+use crate::markdown::{joined, stored};
 use crate::relations::{Entry, Graph, IssueRef, NotReady};
 use crate::store::{IssueFile, Project};
 use crate::timestamp::Timestamp;
@@ -55,13 +57,24 @@ pub struct IssueView {
     pub not_ready: Vec<NotReady>,
 }
 
-/// An issue as `show` returns it: an [`IssueView`] with the body and the
-/// reverse relations.
+/// An issue as `list` returns it: an [`IssueView`] with the time of its
+/// handoff note (`DES-HANDOFF`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ListedIssue {
+    #[serde(flatten)]
+    pub issue: IssueView,
+    /// `None` without a note or for a note whose heading has no time.
+    pub handoff_at: Option<Timestamp>,
+}
+
+/// An issue as `show` returns it: an [`IssueView`] with the body, the
+/// handoff note and the reverse relations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IssueDetail {
     #[serde(flatten)]
     pub issue: IssueView,
     pub body: String,
+    pub handoff: Option<Handoff>,
     pub children: Vec<Id>,
     pub blocks: Vec<Id>,
     pub related_from: Vec<Id>,
@@ -160,6 +173,9 @@ pub struct UpdateRequest {
     /// Applied in order, after `body` and before `append`.
     pub replacements: Vec<Replacement>,
     pub append: Option<String>,
+    /// Writes the handoff note, or with `Some(None)` removes it
+    /// (`DES-HANDOFF`). Applied after `append`.
+    pub handoff: Option<Option<String>>,
     /// Skips the closing rules of `DES-LIFECYCLE`.
     pub force: bool,
 }
@@ -210,7 +226,7 @@ pub fn create(project: &Project, request: &CreateRequest) -> Result<IssueView> {
 /// Lists issues in the order of `DES-READINESS`, with a warning for each
 /// skipped file.
 // @mara implements REQ-LIST-FILTERS
-pub fn list(project: &Project, request: &ListRequest) -> Result<Issues<IssueView>> {
+pub fn list(project: &Project, request: &ListRequest) -> Result<Issues<ListedIssue>> {
     let statuses: Vec<Status> = parse_all(&request.statuses)?;
     let types: Vec<IssueType> = parse_all(&request.types)?;
     let priorities: Vec<Priority> = parse_all(&request.priorities)?;
@@ -246,8 +262,11 @@ pub fn list(project: &Project, request: &ListRequest) -> Result<Issues<IssueView
         .issues()
         .into_iter()
         .filter(|found| matches(found.issue))
-        .map(|found| IssueView::of(&graph, found))
-        .filter(|view| !request.ready || view.ready)
+        .map(|found| ListedIssue {
+            issue: IssueView::of(&graph, found),
+            handoff_at: Handoff::of(&found.issue.body).and_then(|note| note.written_at),
+        })
+        .filter(|listed| !request.ready || listed.issue.ready)
         .collect();
     Ok(Issues {
         issues,
@@ -419,6 +438,7 @@ impl IssueDetail {
         Self {
             issue: IssueView::of(graph, found),
             body: found.issue.body.clone(),
+            handoff: Handoff::of(&found.issue.body),
             children: ids(reverse.children),
             blocks: ids(reverse.blocks),
             related_from: ids(reverse.related_from),
@@ -467,7 +487,7 @@ fn warnings(files: &[IssueFile], graph: &Graph) -> Vec<Warning> {
 }
 
 /// Applies the body edits of `request` in order: the new body, the
-/// replacements, then the appended text (`DES-CLI`).
+/// replacements, the appended text, then the handoff note (`DES-CLI`).
 fn edit_body(body: &mut String, request: &UpdateRequest) -> Result<()> {
     if let Some(text) = &request.body {
         *body = stored(text);
@@ -476,28 +496,14 @@ fn edit_body(body: &mut String, request: &UpdateRequest) -> Result<()> {
         *body = replace_once(body, replacement)?;
     }
     if let Some(text) = &request.append {
-        let text = stored(text);
-        if !text.is_empty() {
-            let kept = body.trim_end();
-            *body = if kept.is_empty() {
-                text
-            } else {
-                format!("{kept}\n\n{text}")
-            };
-        }
+        *body = joined(body, text);
+    }
+    match &request.handoff {
+        Some(Some(text)) => *body = handoff::write(body, text, &Timestamp::now())?,
+        Some(None) => *body = handoff::remove(body)?,
+        None => {}
     }
     Ok(())
-}
-
-/// Text as stored in a body: ending with exactly one LF, or empty
-/// (`DES-ISSUE-FILE`).
-fn stored(text: &str) -> String {
-    let text = text.trim_end_matches(['\n', '\r']);
-    if text.is_empty() {
-        String::new()
-    } else {
-        format!("{text}\n")
-    }
 }
 
 /// Replaces the one occurrence of `replacement.old` in `body`. Fails with
@@ -607,15 +613,6 @@ mod tests {
             new: new.into(),
         };
         replace_once(body, &replacement)
-    }
-
-    #[test]
-    fn stored_text_ends_with_one_line_feed() {
-        assert_eq!(stored("a"), "a\n");
-        assert_eq!(stored("a\n\n\n"), "a\n");
-        assert_eq!(stored("a\r\n"), "a\n");
-        assert_eq!(stored("\n\n"), "");
-        assert_eq!(stored(""), "");
     }
 
     #[test]

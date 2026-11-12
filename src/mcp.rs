@@ -287,6 +287,7 @@ impl Server {
             body: args.body,
             replacements,
             append: args.append,
+            handoff: removable("handoff", args.handoff, args.no_handoff)?,
             force: args.force,
         };
         self.run(args.directory, |start| {
@@ -392,7 +393,8 @@ struct CreateArgs {
     body: Option<String>,
 }
 
-/// Body edits apply in order: `body`, each replacement, then `append`.
+/// Body edits apply in order: `body`, each replacement, `append`, then the
+/// handoff note.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(crate = "rmcp::schemars")]
@@ -440,6 +442,11 @@ struct UpdateArgs {
     /// The replacement for the `replace_old` text at the same position.
     #[serde(default)]
     replace_new: Vec<String>,
+    /// Write the handoff note, replacing any earlier one.
+    handoff: Option<String>,
+    /// Remove the handoff note.
+    #[serde(default)]
+    no_handoff: bool,
     /// Close even with unchecked task items or open children.
     #[serde(default)]
     force: bool,

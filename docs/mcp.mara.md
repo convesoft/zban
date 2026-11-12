@@ -3,8 +3,6 @@
 `zban mcp` serves zban to MCP clients over stdio. It provides the same operations
 as the [command line](cli.mara.md) and tells the client how to use them.
 
-> The handoff parameters of `update_issue` are not implemented yet.
-
 ## Setup
 
 One server can serve every project, so you can configure it once for your user.

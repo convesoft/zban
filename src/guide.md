@@ -71,6 +71,25 @@ may be another checkout on another branch.
 Commit changed issue files, including moves into and out of `.zban/archive/`,
 together with the code they describe. zban never runs Git.
 
+## Handoffs
+
+A handoff is a note on an issue that lets a new session continue unfinished
+work without the old conversation.
+
+- Write one only when the user asks, while you still have the conversation:
+  `{{update id=ID handoff=TEXT}}`. It replaces any earlier note and records
+  the time, so overwrite the note rather than appending to it.
+- Record the commit, the branch and whether the working tree is clean; what
+  is done; what is next; what is blocked or uncertain; approaches tried and
+  rejected; and the files touched. Use plain bullets, not task items, no
+  diffs, and no `#` or `##` headings (`invalid_handoff`).
+- Resume only when asked to continue: find the matching issue with
+  `{{list status=in-progress}}`, asking the user if several could match,
+  show it, and check its note against the repository before acting on it.
+- On `done`, replace the handoff with the summary, keeping the rejected
+  approaches:
+  `{{update id=ID no_handoff append="## Summary of Changes ..." status=done}}`.
+
 ## Finding work
 
 - `{{list ready}}` lists the issues that can start now, best first. Offer
@@ -116,8 +135,8 @@ IDs ignore case, and every tool takes `directory`, as described above.
 - `{{synopsis show}}`: full issues, with the body and the reverse relations.
 - `{{synopsis create}}`
 - `{{synopsis update}}`:
-  body edits apply in the order `{{param body}}`, replacements, `{{param append}}`, and the
-  whole update is applied or nothing is. Each `{{param replace_old}}` text{{mcp}}, replaced by
+  body edits apply in the order `{{param body}}`, replacements, `{{param append}}`,
+  the handoff, and the whole update is applied or nothing is. Each `{{param replace_old}}` text{{mcp}}, replaced by
   the `{{param replace_new}}` text at the same position,{{end}} must occur
   exactly once (`text_not_found`, `text_ambiguous`).
 - `{{synopsis delete}}`: only for an issue no other issue refers to. To drop work,

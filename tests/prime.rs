@@ -25,14 +25,14 @@ const MCP_SNAPSHOT: &str = "tests/snapshots/mcp.md";
 /// `prime` and `mcp` set up agents rather than serve them.
 const SETUP_COMMANDS: &[&str] = &["init", "prime", "mcp", "help"];
 
-/// The sections of `DES-AGENT-GUIDE`, except the handoff section, which
-/// comes with the handoff options.
+/// The sections of `DES-AGENT-GUIDE`.
 const SECTIONS: &[&str] = &[
     "## Track work in zban",
     "## Before starting",
     "## While working",
     "## Finishing",
     "## Committing",
+    "## Handoffs",
     "## Finding work",
     "## Reference",
 ];

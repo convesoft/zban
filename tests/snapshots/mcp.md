@@ -62,6 +62,25 @@ may be another checkout on another branch.
 Commit changed issue files, including moves into and out of `.zban/archive/`,
 together with the code they describe. zban never runs Git.
 
+## Handoffs
+
+A handoff is a note on an issue that lets a new session continue unfinished
+work without the old conversation.
+
+- Write one only when the user asks, while you still have the conversation:
+  `update_issue {"id": ID, "handoff": TEXT}`. It replaces any earlier note and records
+  the time, so overwrite the note rather than appending to it.
+- Record the commit, the branch and whether the working tree is clean; what
+  is done; what is next; what is blocked or uncertain; approaches tried and
+  rejected; and the files touched. Use plain bullets, not task items, no
+  diffs, and no `#` or `##` headings (`invalid_handoff`).
+- Resume only when asked to continue: find the matching issue with
+  `list_issues {"status": ["in-progress"]}`, asking the user if several could match,
+  show it, and check its note against the repository before acting on it.
+- On `done`, replace the handoff with the summary, keeping the rejected
+  approaches:
+  `update_issue {"id": ID, "no_handoff": true, "append": "## Summary of Changes ...", "status": "done"}`.
+
 ## Finding work
 
 - `list_issues {"ready": true}` lists the issues that can start now, best first. Offer
@@ -99,9 +118,9 @@ IDs ignore case, and every tool takes `directory`, as described above.
   list match any of them; `parent` matches direct children only.
 - `show_issues {ids: [ID]}`: full issues, with the body and the reverse relations.
 - `create_issue {title: TITLE, type?: T, status?: S, priority?: P, tag?: [T], parent?: ID, blocked_by?: [ID], related?: [ID], discovered_from?: ID, body?: TEXT}`
-- `update_issue {id: ID, status?: S, type?: T, priority?: P, title?: TEXT, add_tag?: [T], remove_tag?: [T], parent?: ID, no_parent?: true, add_blocked_by?: [ID], remove_blocked_by?: [ID], add_related?: [ID], remove_related?: [ID], discovered_from?: ID, no_discovered_from?: true, body?: TEXT, append?: TEXT, replace_old?: [TEXT], replace_new?: [TEXT], force?: true}`:
-  body edits apply in the order `body`, replacements, `append`, and the
-  whole update is applied or nothing is. Each `replace_old` text, replaced by
+- `update_issue {id: ID, status?: S, type?: T, priority?: P, title?: TEXT, add_tag?: [T], remove_tag?: [T], parent?: ID, no_parent?: true, add_blocked_by?: [ID], remove_blocked_by?: [ID], add_related?: [ID], remove_related?: [ID], discovered_from?: ID, no_discovered_from?: true, body?: TEXT, append?: TEXT, replace_old?: [TEXT], replace_new?: [TEXT], handoff?: TEXT, no_handoff?: true, force?: true}`:
+  body edits apply in the order `body`, replacements, `append`,
+  the handoff, and the whole update is applied or nothing is. Each `replace_old` text, replaced by
   the `replace_new` text at the same position, must occur
   exactly once (`text_not_found`, `text_ambiguous`).
 - `delete_issue {id: ID}`: only for an issue no other issue refers to. To drop work,

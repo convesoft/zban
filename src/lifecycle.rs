@@ -19,7 +19,8 @@ pub struct Checklist {
 impl Checklist {
     pub fn of(body: &str) -> Self {
         let mut checklist = Self::default();
-        for checked in markdown::lines_outside_fences(body).filter_map(markdown::task_item) {
+        let lines = markdown::lines_outside_fences(body);
+        for checked in lines.filter_map(|(_, line)| markdown::task_item(line)) {
             checklist.total += 1;
             checklist.checked += usize::from(checked);
         }

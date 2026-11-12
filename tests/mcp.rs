@@ -131,8 +131,11 @@ fn unify_times(value: &mut Value) {
     match value {
         Value::Object(object) => {
             for (key, value) in object.iter_mut() {
-                if matches!(key.as_str(), "created_at" | "closed_at") && value.is_string() {
+                let time = ["created_at", "closed_at", "written_at", "handoff_at"];
+                if time.contains(&key.as_str()) && value.is_string() {
                     *value = json!("<time>");
+                } else if let (Value::String(body), "body") = (&mut *value, key.as_str()) {
+                    *body = without_handoff_time(body);
                 } else {
                     unify_times(value);
                 }
@@ -140,6 +143,17 @@ fn unify_times(value: &mut Value) {
         }
         Value::Array(values) => values.iter_mut().for_each(unify_times),
         _ => {}
+    }
+}
+
+/// `body` with the time in its handoff heading replaced.
+fn without_handoff_time(body: &str) -> String {
+    match body.split_once("## Handoff (") {
+        Some((before, rest)) => {
+            let after = &rest[rest.find(')').unwrap()..];
+            format!("{before}## Handoff (<time>{after}")
+        }
+        None => body.to_owned(),
     }
 }
 
@@ -273,6 +287,25 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
         "update_issue",
         json!({"id": parse, "replace_old": ["- [ ] Read"], "replace_new": ["- [x] Read"]}),
     );
+    // Hand the work off and read the note back.
+    s.both(
+        &[
+            "update",
+            &parse,
+            "--handoff",
+            "- Next: write\n- Rejected: streaming",
+        ],
+        "update_issue",
+        json!({"id": parse, "handoff": "- Next: write\n- Rejected: streaming"}),
+    );
+    let (_, listed) = s.both(&["list"], "list_issues", json!({}));
+    assert!(listed["issues"][0]["handoff_at"].is_string(), "{listed}");
+    let (_, shown) = s.both(&["show", &parse], "show_issues", json!({"ids": [parse]}));
+    assert_eq!(
+        shown["issues"][0]["handoff"]["text"],
+        "- Next: write\n- Rejected: streaming\n"
+    );
+
     let (status, refused) = s.both(
         &["update", &parse, "-s", "done"],
         "update_issue",
@@ -283,7 +316,7 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
         (1, &json!("unchecked_items"))
     );
 
-    // Close it with a summary.
+    // Close it, replacing the handoff with a summary.
     let (_, closed) = s.both(
         &[
             "update",
@@ -294,13 +327,15 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
             "- [x] Write",
             "--append",
             "## Summary of Changes\n\nDone.",
+            "--no-handoff",
             "-s",
             "done",
             "--no-parent",
         ],
         "update_issue",
         json!({"id": parse, "replace_old": ["- [ ] Write"], "replace_new": ["- [x] Write"],
-               "append": "## Summary of Changes\n\nDone.", "status": "done", "no_parent": true}),
+               "append": "## Summary of Changes\n\nDone.", "no_handoff": true,
+               "status": "done", "no_parent": true}),
     );
     assert!(closed["path"].as_str().unwrap().contains("/archive/"));
     let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
@@ -317,6 +352,13 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
         json!({"ids": [parse, docs.to_uppercase(), A]}),
     );
     assert_eq!(shown["issues"][0]["blocks"], json!([docs]));
+    assert_eq!(shown["issues"][0]["handoff"], Value::Null);
+    let body = shown["issues"][0]["body"].as_str().unwrap();
+    assert!(
+        body.ends_with("\n\n## Summary of Changes\n\nDone.\n"),
+        "{body}"
+    );
+    assert!(!body.contains("Rejected"), "{body}");
 
     // Check, then remove what the flow created.
     let (_, checked) = s.both(&["check"], "check_issues", json!({}));
@@ -419,6 +461,18 @@ fn invalid_arguments_give_the_same_error_codes() {
             &["update", B, "--replace-old", "Step"],
             "update_issue",
             json!({"id": B, "replace_old": ["Step"]}),
+            "usage",
+        ),
+        (
+            &["update", B, "--handoff", "- x\n## Next"],
+            "update_issue",
+            json!({"id": B, "handoff": "- x\n## Next"}),
+            "invalid_handoff",
+        ),
+        (
+            &["update", B, "--handoff", "x", "--no-handoff"],
+            "update_issue",
+            json!({"id": B, "handoff": "x", "no_handoff": true}),
             "usage",
         ),
         (
