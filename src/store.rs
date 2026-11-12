@@ -74,6 +74,11 @@ impl Project {
     /// Creates `.zban/` and its configuration in `directory`. An invalid
     /// prefix is rejected before anything is created.
     pub fn init(directory: &Path, prefix: Option<&str>) -> Result<Self> {
+        Self::init_linking(directory, prefix, hard_link)
+    }
+
+    /// [`Project::init`], giving the configuration its name with `link`.
+    fn init_linking(directory: &Path, prefix: Option<&str>, link: Link) -> Result<Self> {
         let config = Config {
             prefix: prefix.map(Prefix::parse).transpose()?.unwrap_or_default(),
         };
@@ -89,11 +94,13 @@ impl Project {
             }
             Err(error) => return Err(Error::io(&dir, &error)),
         }
+        let project = Self { root, config };
         let path = dir.join(CONFIG);
-        Staged::write(&dir, config.render().as_bytes())?
-            .link(&path)
-            .map_err(|error| Error::io(&path, &error))?;
-        Ok(Self { root, config })
+        let mut staged = Staged::write(&dir, project.config.render().as_bytes())?;
+        if !project.add_file(&mut staged, &path, None, link)? {
+            return Err(Error::io(&path, &io::ErrorKind::AlreadyExists.into()));
+        }
+        Ok(project)
     }
 
     /// Finds the project whose `.zban/config.toml` is nearest above `start`.
@@ -295,8 +302,8 @@ impl Project {
 
     /// Creates a new issue file, drawing IDs from `next_id` until one is
     /// unused in both `.zban/` and `.zban/archive/` (`DES-ISSUE-ID`). The file
-    /// is linked into place, which never replaces an existing file. Its
-    /// relations are checked against the project first (`REQ-RELATIONS`).
+    /// is added as [`Project::add_file`] describes. Its relations are checked
+    /// against the project first (`REQ-RELATIONS`).
     /// Kept for tests, which choose the IDs to draw.
     pub fn create_with(
         &self,
@@ -312,7 +319,18 @@ impl Project {
         &self,
         graph: &Graph,
         issue: &Issue,
+        next_id: impl FnMut() -> Result<Id>,
+    ) -> Result<IssueFile> {
+        self.create_linking(graph, issue, next_id, hard_link)
+    }
+
+    /// [`Project::create_among`], giving the file its name with `link`.
+    fn create_linking(
+        &self,
+        graph: &Graph,
+        issue: &Issue,
         mut next_id: impl FnMut() -> Result<Id>,
+        link: Link,
     ) -> Result<IssueFile> {
         let bytes = self.encode(issue)?;
         graph.check(None, None, issue)?;
@@ -325,23 +343,51 @@ impl Project {
         if archived {
             fs::create_dir_all(&dir).map_err(|error| Error::io(&dir, &error))?;
         }
-        let staged = Staged::write(&dir, &bytes)?;
+        let mut staged = Staged::write(&dir, &bytes)?;
         for _ in 0..MAX_ID_ATTEMPTS {
             let name = format!("{}.md", next_id()?);
-            if fs::symlink_metadata(other.join(&name)).is_ok() {
-                continue;
-            }
             let path = dir.join(&name);
-            match staged.link(&path) {
-                Ok(()) => return Ok(self.file(path, archived, bytes)),
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(Error::io(&path, &error)),
+            if self.add_file(&mut staged, &path, Some(&other.join(&name)), link)? {
+                return Ok(self.file(path, archived, bytes));
             }
         }
         Err(Error::new(
             ErrorCode::Io,
             format!("found no unused issue ID in {MAX_ID_ATTEMPTS} attempts"),
         ))
+    }
+
+    /// Gives `staged` the new name `target`, or returns `false`, changing
+    /// nothing, when `target` or `twin` is taken. It links the file there,
+    /// which fails rather than replacing a file. Where the file system has no
+    /// hard links, it instead checks both names and renames the file while
+    /// holding the exclusive lock, so that no other zban process takes the
+    /// name in between (`ADR-CREATE-WITHOUT-HARD-LINKS`).
+    // @mara implements DES-SHARED-CORE
+    fn add_file(
+        &self,
+        staged: &mut Staged,
+        target: &Path,
+        twin: Option<&Path>,
+        link: Link,
+    ) -> Result<bool> {
+        let taken = |path: &Path| fs::symlink_metadata(path).is_ok();
+        if twin.is_some_and(taken) {
+            return Ok(false);
+        }
+        match link(&staged.path, target) {
+            Ok(()) => return Ok(true),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
+            Err(error) if !linking_unsupported(&error) => return Err(Error::io(target, &error)),
+            Err(_) => {}
+        }
+        self.locked(|| {
+            if taken(target) || twin.is_some_and(taken) {
+                return Ok(false);
+            }
+            staged.rename(target)?;
+            Ok(true)
+        })
     }
 
     /// Replaces a file read earlier with `issue`, in place. Fails with
@@ -352,7 +398,7 @@ impl Project {
     pub fn replace(&self, file: &IssueFile, issue: &Issue) -> Result<IssueFile> {
         let bytes = self.encode(issue)?;
         let dir = file.path.parent().unwrap_or(Path::new("."));
-        let staged = Staged::write(dir, &bytes)?;
+        let mut staged = Staged::write(dir, &bytes)?;
         if let Ok(metadata) = fs::metadata(&file.path) {
             // Keep the file's permissions; a failure here is not worth failing for.
             let _ = fs::set_permissions(&staged.path, metadata.permissions());
@@ -465,7 +511,9 @@ impl Project {
     /// Runs `step` while holding the lock that `lock` takes on a new handle
     /// of `.zban/`. The lock waits for a conflicting holder and is released
     /// when `step` returns. Where the file system has no advisory locks,
-    /// `step` runs unlocked.
+    /// `step` runs unlocked, which leaves the byte comparison as the only
+    /// guard of a write (`ADR-WRITE-LOCK`). Any other failure to take the
+    /// lock fails the step.
     ///
     /// Locks on separate handles conflict even within one process, so
     /// `step` must not take the lock again: that would wait forever.
@@ -477,7 +525,7 @@ impl Project {
         let dir = self.dir();
         let handle = File::open(&dir).map_err(|error| Error::io(&dir, &error))?;
         if let Err(error) = lock(&handle)
-            && !proceeds_unlocked(&error)
+            && !unsupported(&error)
         {
             return Err(Error::io(&dir, &error));
         }
@@ -533,22 +581,28 @@ fn conflict(file: &IssueFile, what: &str) -> Error {
     )
 }
 
-/// Whether a write or read goes ahead without the lock after taking it
-/// failed with `error`: only when the file system has no advisory locks,
-/// which leaves the byte comparison as the only guard of a write
-/// (`ADR-WRITE-LOCK`). Any other failure fails the step.
-fn proceeds_unlocked(error: &io::Error) -> bool {
+/// Whether `error` says that the file system does not support the call,
+/// such as taking an advisory lock (`ADR-WRITE-LOCK`).
+fn unsupported(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::Unsupported
         || error
             .raw_os_error()
-            .is_some_and(|code| LOCKING_UNSUPPORTED.contains(&code))
+            .is_some_and(|code| UNSUPPORTED.contains(&code))
+}
+
+/// Whether linking a new file into place failed with `error` because the
+/// file system has no hard links: unsupported, or `EPERM` on Linux, which
+/// `link(2)` documents for such a file system
+/// (`ADR-CREATE-WITHOUT-HARD-LINKS`).
+fn linking_unsupported(error: &io::Error) -> bool {
+    unsupported(error) || (cfg!(target_os = "linux") && error.raw_os_error() == Some(1))
 }
 
 /// `ENOSYS`, `ENOTSUP` and `EOPNOTSUPP` on the platforms of
 /// `ADR-RUST-BINARY`, which the standard library may not report as
 /// `Unsupported`; it does not for macOS's `ENOTSUP`. Elsewhere only
 /// `Unsupported` counts.
-const LOCKING_UNSUPPORTED: &[i32] = if cfg!(target_vendor = "apple") {
+const UNSUPPORTED: &[i32] = if cfg!(target_vendor = "apple") {
     &[78, 45, 102]
 } else if cfg!(all(
     target_os = "linux",
@@ -616,17 +670,21 @@ impl Staged {
     }
 
     /// Atomically replaces `target` with this file.
-    fn rename(mut self, target: &Path) -> Result<()> {
+    fn rename(&mut self, target: &Path) -> Result<()> {
         fs::rename(&self.path, target).map_err(|error| Error::io(target, &error))?;
         self.renamed = true;
         Ok(())
     }
+}
 
-    /// Creates `target` as another name of this file. Fails with
-    /// `AlreadyExists` rather than replacing an existing file.
-    fn link(&self, target: &Path) -> io::Result<()> {
-        fs::hard_link(&self.path, target)
-    }
+/// Gives a file a second name, failing with `AlreadyExists` rather than
+/// replacing a file there. It is [`hard_link`] except in tests, which make
+/// it fail as a file system without hard links does.
+type Link = fn(&Path, &Path) -> io::Result<()>;
+
+/// Creates `link` as another name of the file at `original`.
+fn hard_link(original: &Path, link: &Path) -> io::Result<()> {
+    fs::hard_link(original, link)
 }
 
 impl Drop for Staged {
@@ -749,9 +807,9 @@ mod tests {
         if cfg!(any(target_os = "linux", target_os = "macos"))
             && cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
         {
-            assert!(!LOCKING_UNSUPPORTED.is_empty());
+            assert!(!UNSUPPORTED.is_empty());
         }
-        for &code in LOCKING_UNSUPPORTED {
+        for &code in UNSUPPORTED {
             let error = io::Error::from_raw_os_error(code);
             // The operating system's own message confirms each number. Its
             // letter case depends on the C library: glibc says "Operation not
@@ -762,9 +820,9 @@ mod tests {
                 lowercase.contains("not supported") || lowercase.contains("not implemented"),
                 "{code}: {message}"
             );
-            assert!(proceeds_unlocked(&error), "{message}");
+            assert!(unsupported(&error), "{message}");
         }
-        assert!(proceeds_unlocked(&io::ErrorKind::Unsupported.into()));
+        assert!(unsupported(&io::ErrorKind::Unsupported.into()));
 
         let failures = [
             io::ErrorKind::PermissionDenied.into(),
@@ -775,7 +833,138 @@ mod tests {
             io::Error::from_raw_os_error(13),
         ];
         for error in failures {
-            assert!(!proceeds_unlocked(&error), "{error}");
+            assert!(!unsupported(&error), "{error}");
         }
+    }
+
+    /// Fails as linking does on a file system without hard links: with
+    /// `EPERM` on Linux and `ENOTSUP` on macOS.
+    fn link_unsupported(_: &Path, _: &Path) -> io::Result<()> {
+        let code = if cfg!(target_vendor = "apple") { 45 } else { 1 };
+        Err(io::Error::from_raw_os_error(code))
+    }
+
+    /// Fails as linking does when the file system has hard links but the
+    /// write fails, with `EIO`.
+    fn link_broken(_: &Path, _: &Path) -> io::Result<()> {
+        Err(io::Error::from_raw_os_error(5))
+    }
+
+    // @mara implements VER-ISSUE-FILES
+    #[test]
+    fn linking_falls_back_only_where_the_file_system_has_no_hard_links() {
+        let eperm = io::Error::from_raw_os_error(1);
+        assert!(eperm.to_string().contains("not permitted"), "{eperm}");
+        assert_eq!(linking_unsupported(&eperm), cfg!(target_os = "linux"));
+        assert!(linking_unsupported(
+            &link_unsupported(Path::new("a"), Path::new("b")).unwrap_err()
+        ));
+        assert!(linking_unsupported(&io::ErrorKind::Unsupported.into()));
+        for &code in UNSUPPORTED {
+            assert!(linking_unsupported(&io::Error::from_raw_os_error(code)));
+        }
+
+        let failures = [
+            io::ErrorKind::PermissionDenied.into(),
+            io::Error::other("link failed"),
+            // EIO, EACCES, EEXIST, EXDEV and EMLINK, which have these
+            // numbers on Linux and macOS.
+            io::Error::from_raw_os_error(5),
+            io::Error::from_raw_os_error(13),
+            io::Error::from_raw_os_error(17),
+            io::Error::from_raw_os_error(18),
+            io::Error::from_raw_os_error(31),
+        ];
+        for error in failures {
+            assert!(!linking_unsupported(&error), "{error}");
+        }
+    }
+
+    // @mara implements VER-ISSUE-FILES
+    #[test]
+    fn init_and_create_rename_into_place_without_hard_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = Project::init_linking(dir.path(), None, link_unsupported).unwrap();
+        assert_eq!(entries(&project.dir()), [CONFIG]);
+        assert_eq!(
+            Project::open(project.root()).unwrap().prefix(),
+            project.prefix()
+        );
+
+        let id = |value: &str| Id::parse(project.prefix(), value).unwrap();
+        let closed = |title: &str| Issue {
+            status: crate::Status::Done,
+            closed_at: Some(Timestamp::now()),
+            ..Issue::new(title, Timestamp::now())
+        };
+        let taken_open = project
+            .create_with(&Issue::new("Open", Timestamp::now()), || {
+                Ok(id("zb-00000a"))
+            })
+            .unwrap();
+        let taken_closed = project
+            .create_with(&closed("Closed"), || Ok(id("zb-00000b")))
+            .unwrap();
+
+        // Each create first draws the ID taken in its own directory, then
+        // the one taken in the other directory.
+        let files = project.load().unwrap();
+        let graph = Graph::new(&files);
+        let mut ids = ["zb-00000a", "zb-00000b", "zb-00000c"].map(id).into_iter();
+        let open = project
+            .create_linking(
+                &graph,
+                &Issue::new("New open", Timestamp::now()),
+                || Ok(ids.next().unwrap()),
+                link_unsupported,
+            )
+            .unwrap();
+        let mut ids = ["zb-00000b", "zb-00000a", "zb-00000d"].map(id).into_iter();
+        let closed = project
+            .create_linking(
+                &graph,
+                &closed("New closed"),
+                || Ok(ids.next().unwrap()),
+                link_unsupported,
+            )
+            .unwrap();
+
+        assert_eq!(open.path, project.dir().join("zb-00000c.md"));
+        assert_eq!(closed.path, project.archive_dir().join("zb-00000d.md"));
+        assert_eq!(fs::read(&taken_open.path).unwrap(), taken_open.bytes);
+        assert_eq!(fs::read(&taken_closed.path).unwrap(), taken_closed.bytes);
+        assert_eq!(
+            entries(&project.dir()),
+            [ARCHIVE, CONFIG, "zb-00000a.md", "zb-00000c.md"]
+        );
+        assert_eq!(
+            entries(&project.archive_dir()),
+            ["zb-00000b.md", "zb-00000d.md"]
+        );
+        let loaded = project.load().unwrap();
+        assert!(loaded.contains(&open) && loaded.contains(&closed));
+    }
+
+    // @mara implements VER-ISSUE-FILES
+    #[test]
+    fn init_and_create_fail_with_io_on_any_other_linking_error() {
+        let (_dir, project) = temp_project();
+        let files = project.load().unwrap();
+        let error = project
+            .create_linking(
+                &Graph::new(&files),
+                &Issue::new("Never written", Timestamp::now()),
+                || Id::generate(project.prefix()),
+                link_broken,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Io);
+        assert_eq!(entries(&project.dir()), [CONFIG]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let error = Project::init_linking(dir.path(), None, link_broken).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Io);
+        // The empty `.zban/` that stays behind is zb-bjyq1s.
+        assert!(entries(&dir.path().join(DIR)).is_empty());
     }
 }
