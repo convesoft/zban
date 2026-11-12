@@ -62,6 +62,9 @@ enum Command {
         #[arg(long)]
         fix: bool,
     },
+    /// Print the workflow guide for coding agents; outside a project, print
+    /// nothing.
+    Prime,
 }
 
 #[derive(Args)]
@@ -222,6 +225,11 @@ fn execute(command: Command, directory: &Path) -> Result<Reply> {
             let checked = operations::check(directory, fix)?;
             let text = human::findings(&checked.findings);
             Ok(Reply::new(&checked, text).failed(checked.has_errors()))
+        }
+        Command::Prime => {
+            let guide = operations::guide(directory)?;
+            let text = guide.guide.clone().unwrap_or_default();
+            Ok(Reply::new(&guide, text))
         }
     }
 }

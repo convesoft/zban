@@ -4,6 +4,7 @@
 pub mod check;
 pub mod config;
 pub mod error;
+mod guide;
 pub mod id;
 pub mod issue;
 pub mod lifecycle;

@@ -15,3 +15,5 @@ An interrupted write (`REQ-PRESERVE-CONTENT`) can leave a `.zban-<random>.tmp` f
 Maintainer decision: `zban check` reports leftover `.zban-*.tmp` files, and `zban check --fix` deletes them.
 
 Update `DES-CHECK` and `VER-CHECK` in Mara first, in the same change, then implement and test the new finding and its repair.
+
+The agent guide (`src/guide.md`) says what `--fix` repairs; update it and its snapshot too.

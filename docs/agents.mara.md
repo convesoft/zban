@@ -2,7 +2,8 @@
 
 zban teaches agents its workflow itself, so a project needs very little setup.
 
-> zban is not implemented yet. This page describes the agreed v1 interface.
+> `zban mcp` and handoff notes are not implemented yet. This page describes the
+> agreed v1 interface.
 
 ## Setup
 
@@ -124,7 +125,7 @@ The guide is one template compiled into the binary and kept under about 150 line
 
 The MCP rendering also tells agents to pass `directory` on every call when they work in a worktree or outside the directory the server started in.
 
-Delivery depends on the project found where the surface starts: from the working directory or `-C` for `prime`, and from the server's `-C` or working directory at startup for MCP. With a project, both deliver the full guide. Without one, `prime` prints nothing, and the MCP server sends a short note of a few lines instead: zban tracks issues in `.zban/` directories, no project was found where the server started, tools take `directory`, and `zban prime -C <dir>` prints the full guide.
+Delivery depends on the project found where the surface starts: from the working directory or `-C` for `prime`, and from the server's `-C` or working directory at startup for MCP. With a project, both deliver the full guide; a project whose configuration is invalid still counts, because the guide does not depend on it. Without one, `prime` prints nothing, and the MCP server sends a short note of a few lines instead: zban tracks issues in `.zban/` directories, no project was found where the server started, tools take `directory`, and `zban prime -C <dir>` prints the full guide.
 
 Project-specific conventions are deliberately left out; projects add them in their own agent instructions.
 :::

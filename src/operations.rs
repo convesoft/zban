@@ -99,6 +99,12 @@ impl Checked {
     }
 }
 
+/// The result of `guide`: the agent guide, or `None` outside a project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Guide {
+    pub guide: Option<String>,
+}
+
 /// A `create` request.
 #[derive(Debug, Clone, Default)]
 pub struct CreateRequest {
@@ -356,6 +362,24 @@ pub fn delete(project: &Project, id: &str) -> Result<IssueView> {
 pub fn check(directory: &Path, fix: bool) -> Result<Checked> {
     Ok(Checked {
         findings: Project::check(directory, fix)?,
+    })
+}
+
+/// The agent guide when a project is found from `directory`, and `None`
+/// otherwise. A project whose configuration is invalid still counts as found,
+/// because the guide does not depend on it.
+// @mara implements DES-AGENT-GUIDE
+pub fn guide(directory: &Path) -> Result<Guide> {
+    let found = match Project::discover(directory) {
+        Ok(_) => true,
+        Err(error) => match error.code {
+            ErrorCode::InvalidConfig => true,
+            ErrorCode::ProjectNotFound => false,
+            _ => return Err(error),
+        },
+    };
+    Ok(Guide {
+        guide: found.then(crate::guide::render),
     })
 }
 
