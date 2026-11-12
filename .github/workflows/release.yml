@@ -11,6 +11,8 @@ on:
       - .github/workflows/release.yml
       - Cargo.toml
       - Cargo.lock
+      - about.toml
+      - about.hbs
   workflow_dispatch:
 
 permissions:
@@ -94,6 +96,22 @@ jobs:
           test -f ".zban/archive/$id.md"
           "$ZBAN" list --status done | grep -F "$id"
           "$ZBAN" check
+      # Writes the licenses of the crates compiled into zban, from about.toml and
+      # about.hbs. cargo-about is not cached: a tag run cannot restore the caches
+      # of pull request runs, and a release should not ship notices written by a
+      # binary restored from a cache.
+      - name: Write the third-party licenses
+        shell: bash
+        run: |
+          cargo install --locked cargo-about --version 0.9.3 --features cli
+          cargo about generate --locked --fail --target ${{ matrix.target }} \
+            --output-file THIRD-PARTY-LICENSES about.hbs 2>&1 | tee "$RUNNER_TEMP/cargo-about.log"
+          # A license file that no longer matches its checksum in about.toml
+          # only draws a warning, and its crate gets the license's generic text.
+          if grep -F WARN "$RUNNER_TEMP/cargo-about.log"; then
+            echo "::error::cargo-about warned about a license; review about.toml"
+            exit 1
+          fi
       - name: Package
         env:
           # Keeps macOS tar from adding AppleDouble `._` files.
@@ -101,8 +119,9 @@ jobs:
         run: |
           staging="$RUNNER_TEMP/zban-${{ matrix.target }}"
           mkdir -p "$staging" dist
-          cp target/${{ matrix.target }}/release/zban README.md LICENSE-MIT LICENSE-APACHE "$staging"
-          tar -czf dist/zban-${{ matrix.target }}.tar.gz -C "$staging" zban README.md LICENSE-MIT LICENSE-APACHE
+          cp target/${{ matrix.target }}/release/zban README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES "$staging"
+          tar -czf dist/zban-${{ matrix.target }}.tar.gz -C "$staging" zban README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES
+          tar -tzf dist/zban-${{ matrix.target }}.tar.gz | grep -Fx THIRD-PARTY-LICENSES
       - uses: actions/upload-artifact@v7
         with:
           name: zban-${{ matrix.target }}

@@ -1,0 +1,17 @@
+Third-party licenses
+====================
+
+The zban binary includes code from the crates below. Each license names the
+crates that use it, followed by its text.
+{{#each licenses}}
+
+--------------------------------------------------------------------------------
+{{{name}}}
+
+Used by:
+{{#each used_by}}
+- {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+
+{{{text}}}
+{{/each}}
