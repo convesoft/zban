@@ -5,7 +5,9 @@ mod common;
 use std::fs;
 use std::path::Path;
 
-use common::{copy_repository_backlog, temp_dir, write_files};
+use common::{
+    copy_repository_backlog, json_error_code, racing_updates, stderr, temp_dir, write_files, zban,
+};
 use zban::{
     ErrorCode, Id, Issue, IssueFile, IssueType, Prefix, Priority, ProblemCode, Project, Status,
     Timestamp,
@@ -695,6 +697,77 @@ fn concurrent_change_fails_with_conflict_and_survives() {
     let error = project.replace(&fresh, &issue).unwrap_err();
     assert_eq!(error.code, ErrorCode::Conflict, "a stale read is rejected");
     project.replace(&updated, &issue).unwrap();
+}
+
+/// Runs of `zban update` racing on one issue: a run whose file another run
+/// replaced after its read fails with `conflict` and writes nothing, so the
+/// other change survives.
+// @mara implements VER-ISSUE-FILES
+#[test]
+fn update_fails_with_conflict_when_another_run_replaced_the_file() {
+    let project = project("update-conflict", &[]);
+    let created = project
+        .create(&Issue::new("Raced", Timestamp::now()))
+        .unwrap();
+    let id = created.id.unwrap();
+
+    let runs = racing_updates(project.root(), id.as_str());
+    let body = load_one(&project, id.as_str()).issue.unwrap().body;
+    let failed: Vec<_> = runs
+        .iter()
+        .filter(|(_, output)| json_error_code(output).as_deref() == Some("conflict"))
+        .collect();
+    assert!(!failed.is_empty());
+    for (line, output) in failed {
+        assert_eq!(output.status.code(), Some(1));
+        assert!(!body.contains(line.as_str()), "{line} in {body:?}");
+    }
+    // The file holds what the last successful run wrote.
+    assert!(
+        runs.iter()
+            .any(|(line, output)| output.status.success() && body.contains(line.as_str())),
+        "{body:?}"
+    );
+    assert_no_temporary_files(&project.dir());
+}
+
+/// An update writes a new file and renames it over the issue, so the issue's
+/// path names another inode afterwards and the original file is never
+/// written in place: a second name for it keeps the old bytes. That is what
+/// keeps an interrupted update from leaving a partial issue.
+// @mara implements VER-ISSUE-FILES
+#[test]
+fn update_renames_a_new_file_over_the_issue() {
+    let project = project("atomic-replace", &[]);
+    let created = project
+        .create(&Issue::new("Original", Timestamp::now()))
+        .unwrap();
+    let id = created.id.unwrap();
+    let id = id.as_str();
+    let original = project.root().join("original.md");
+
+    for args in [
+        &["update", id, "--title", "Renamed"][..],
+        &["update", id, "--append", "More text."],
+        &["update", id, "--status", "done"],
+    ] {
+        let before = load_one(&project, id);
+        let _ = fs::remove_file(&original);
+        fs::hard_link(&before.path, &original).unwrap();
+
+        let output = zban(project.root(), args);
+        assert!(output.status.success(), "{args:?}: {}", stderr(&output));
+
+        assert_ne!(load_one(&project, id).bytes, before.bytes, "{args:?}");
+        assert_eq!(
+            fs::read_to_string(&original).unwrap(),
+            String::from_utf8_lossy(&before.bytes),
+            "{args:?}"
+        );
+    }
+    assert_eq!(load_one(&project, id).issue.unwrap().status, Status::Done);
+    assert_no_temporary_files(&project.dir());
+    assert_no_temporary_files(&project.archive_dir());
 }
 
 // @mara implements VER-ISSUE-FILES
