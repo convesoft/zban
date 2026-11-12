@@ -7,8 +7,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use common::mcp::{Called, Client};
-use common::{snapshot, stderr, stdout, temp_dir, temp_dir_outside_projects, write_files, zban};
+use common::{snapshot, stderr, stdout, temp_dir, write_files, zban};
 use serde_json::{Value, json};
+use tempfile::TempDir;
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
 
@@ -57,20 +58,24 @@ struct Surfaces {
     client: Client,
     /// The IDs of the issues created in both projects, as (CLI, MCP).
     created: Vec<(String, String)>,
+    /// The directories of both projects. Fields drop in order, so these are
+    /// deleted after `client` has waited for the server to exit.
+    _dirs: [TempDir; 2],
 }
 
 impl Surfaces {
-    fn new(name: &str) -> Self {
-        let cli = temp_dir(&format!("mcp-{name}-cli"));
-        let mcp = temp_dir(&format!("mcp-{name}-mcp"));
+    fn new() -> Self {
+        let dirs = [temp_dir(), temp_dir()];
+        let [cli, mcp] = dirs.each_ref().map(|dir| dir.path().to_owned());
         fixture(&cli);
         fixture(&mcp);
         let client = Client::start(&mcp, &[]);
         Self {
-            cli: fs::canonicalize(cli).unwrap(),
-            mcp: fs::canonicalize(mcp).unwrap(),
+            cli,
+            mcp,
             client,
             created: Vec::new(),
+            _dirs: dirs,
         }
     }
 
@@ -174,9 +179,9 @@ fn error_code(called: &Called) -> &str {
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn the_tool_list_matches_the_design() {
-    let root = temp_dir("mcp-tools");
-    fixture(&root);
-    let mut client = Client::start(&root, &[]);
+    let dir = temp_dir();
+    fixture(dir.path());
+    let mut client = Client::start(dir.path(), &[]);
     assert_eq!(client.initialized["serverInfo"]["name"], "zban");
     let capabilities = client.initialized["capabilities"].as_object().unwrap();
     assert_eq!(
@@ -214,7 +219,7 @@ fn the_tool_list_matches_the_design() {
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
-    let mut s = Surfaces::new("flow");
+    let mut s = Surfaces::new();
 
     // Create, and block a second issue on the first.
     let (_, parse) = s.both(
@@ -374,7 +379,7 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn invalid_arguments_give_the_same_error_codes() {
-    let mut s = Surfaces::new("errors");
+    let mut s = Surfaces::new();
     let before = snapshot(&s.cli.join(".zban"), &[]);
     let cases: &[(&[&str], &str, Value, &str)] = &[
         (
@@ -540,7 +545,7 @@ fn invalid_arguments_give_the_same_error_codes() {
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn unpaired_replacements_and_set_and_removed_values_are_usage_errors() {
-    let mut s = Surfaces::new("pairs");
+    let mut s = Surfaces::new();
     let before = snapshot(&s.cli.join(".zban"), &[]);
     let message = |document: &Value| document["error"]["message"].as_str().unwrap().to_owned();
 
@@ -592,7 +597,7 @@ fn unpaired_replacements_and_set_and_removed_values_are_usage_errors() {
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn a_check_that_finds_errors_is_a_result() {
-    let mut s = Surfaces::new("check");
+    let mut s = Surfaces::new();
     let closed = "---\ntitle: Closed\nstatus: done\ntype: task\n\
                   created_at: 2026-01-01T00:00:04Z\nclosed_at: 2026-01-02T00:00:00Z\n---\n";
     for root in [&s.cli, &s.mcp] {
@@ -611,11 +616,12 @@ fn a_check_that_finds_errors_is_a_result() {
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn a_relative_directory_is_rejected() {
-    let root = temp_dir("mcp-relative");
-    fixture(&root);
+    let dir = temp_dir();
+    let root = dir.path();
+    fixture(root);
     fs::create_dir_all(root.join("sub")).unwrap();
-    let before = snapshot(&root, &[]);
-    let mut client = Client::start(&root, &[]);
+    let before = snapshot(root, &[]);
+    let mut client = Client::start(root, &[]);
     for (tool, arguments) in [
         ("list_issues", json!({"directory": "sub"})),
         ("list_issues", json!({"directory": "."})),
@@ -626,18 +632,18 @@ fn a_relative_directory_is_rejected() {
         assert_eq!(error_code(&called), "usage", "{tool}");
         assert!(called.text.contains("absolute"), "{}", called.text);
     }
-    assert_eq!(snapshot(&root, &[]), before);
+    assert_eq!(snapshot(root, &[]), before);
 }
 
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn outside_a_project_every_tool_needs_a_directory() {
-    let outside = temp_dir_outside_projects("mcp-outside");
-    let project = temp_dir("mcp-outside-project");
-    fixture(&project);
-    let project = fs::canonicalize(project).unwrap();
+    let outside = temp_dir();
+    let dir = temp_dir();
+    let project = dir.path();
+    fixture(project);
 
-    let mut client = Client::start(&outside, &[]);
+    let mut client = Client::start(outside.path(), &[]);
     assert_eq!(client.instructions(), zban::guide::NOTE);
     for (tool, arguments) in [
         ("list_issues", json!({})),
@@ -663,9 +669,8 @@ fn outside_a_project_every_tool_needs_a_directory() {
             called.document
         );
     }
-    assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
     assert!(client.finish().success());
-    fs::remove_dir_all(outside).unwrap();
 }
 
 // @mara implements VER-SURFACE-PARITY
@@ -673,20 +678,19 @@ fn outside_a_project_every_tool_needs_a_directory() {
 fn directory_chooses_the_project_on_every_call() {
     // The server starts in `main`; `worktree` is a copy of it, as a Git
     // worktree would be, and `other` is an unrelated project.
-    let main = temp_dir("mcp-main");
-    let worktree = temp_dir("mcp-worktree");
-    let other = temp_dir("mcp-other");
-    fixture(&main);
-    fixture(&worktree);
+    let dirs = [temp_dir(), temp_dir(), temp_dir()];
+    let [main, worktree, other] = dirs.each_ref().map(TempDir::path);
+    fixture(main);
+    fixture(worktree);
     write_files(
-        &other,
+        other,
         &[(".zban/config.toml", "format_version = 1\nprefix = \"ot\"\n")],
     );
     fs::create_dir_all(worktree.join("src/deep")).unwrap();
-    let main_before = snapshot(&main, &[]);
+    let main_before = snapshot(main, &[]);
     let path = |dir: &Path| fs::canonicalize(dir).unwrap().to_str().unwrap().to_owned();
 
-    let mut client = Client::start(&main, &[]);
+    let mut client = Client::start(main, &[]);
     let in_worktree = path(&worktree.join("src/deep"));
     let created = client.call(
         "create_issue",
@@ -703,45 +707,40 @@ fn directory_chooses_the_project_on_every_call() {
         updated.document["path"]
             .as_str()
             .unwrap()
-            .starts_with(&path(&worktree))
+            .starts_with(&path(worktree))
     );
     assert!(worktree.join(".zban/archive/zb-aaaaaa.md").is_file());
 
     // Without `directory`, the server's own project, which is unchanged.
     let listed = client.call("list_issues", json!({"all": true}));
     assert!(!ids(&listed.document).contains(&id.as_str()));
-    assert_eq!(snapshot(&main, &[]), main_before);
-    let listed = client.call("list_issues", json!({"directory": path(&worktree)}));
+    assert_eq!(snapshot(main, &[]), main_before);
+    let listed = client.call("list_issues", json!({"directory": path(worktree)}));
     assert!(ids(&listed.document).contains(&id.as_str()));
 
     // Another project, with its own prefix.
     let created = client.call(
         "create_issue",
-        json!({"directory": path(&other), "title": "Other"}),
+        json!({"directory": path(other), "title": "Other"}),
     );
     assert!(created.document["id"].as_str().unwrap().starts_with("ot-"));
-    let shown = client.call(
-        "show_issues",
-        json!({"directory": path(&other), "ids": [A]}),
-    );
+    let shown = client.call("show_issues", json!({"directory": path(other), "ids": [A]}));
     assert_eq!(error_code(&shown), "not_found");
-    assert_eq!(snapshot(&main, &[]), main_before);
+    assert_eq!(snapshot(main, &[]), main_before);
     assert!(client.finish().success());
 
     // A server started elsewhere with `-C` uses that project by default.
-    let outside = temp_dir_outside_projects("mcp-directory-option");
-    let mut client = Client::start(&outside, &["-C", &path(&worktree)]);
+    let outside = temp_dir();
+    let mut client = Client::start(outside.path(), &["-C", &path(worktree)]);
     let listed = client.call("list_issues", json!({}));
     assert!(ids(&listed.document).contains(&id.as_str()));
-    drop(client);
-    fs::remove_dir_all(outside).unwrap();
 }
 
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn mcp_takes_no_json_option() {
-    let root = temp_dir("mcp-json");
-    let output = zban(&root, &["mcp", "--json"]);
+    let dir = temp_dir();
+    let output = zban(dir.path(), &["mcp", "--json"]);
     assert_eq!(output.status.code(), Some(2));
     let document: Value = serde_json::from_str(&stdout(&output)).unwrap();
     assert_eq!(document["error"]["code"], "usage");
