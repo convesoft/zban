@@ -162,6 +162,32 @@ impl Project {
     /// (`REQ-DAMAGED-DATA`). Files are ordered by path.
     pub fn load(&self) -> Result<Vec<IssueFile>> {
         let mut files = Vec::new();
+        for (path, archived) in self.entries()? {
+            if is_issue_file(&path) {
+                files.push(self.read(path, archived));
+            }
+        }
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(files)
+    }
+
+    /// The temporary files that interrupted writes left in `.zban/` or
+    /// `.zban/archive/`, ordered by path (`DES-CHECK`).
+    pub(crate) fn temporary_files(&self) -> Result<Vec<PathBuf>> {
+        let mut paths: Vec<_> = self
+            .entries()?
+            .into_iter()
+            .map(|(path, _)| path)
+            .filter(|path| is_temporary_file(path))
+            .collect();
+        paths.sort();
+        Ok(paths)
+    }
+
+    /// Every entry directly inside `.zban/` and `.zban/archive/`, with
+    /// whether it is in the archive. A missing archive has no entries.
+    fn entries(&self) -> Result<Vec<(PathBuf, bool)>> {
+        let mut paths = Vec::new();
         for (dir, archived) in [(self.dir(), false), (self.archive_dir(), true)] {
             let entries = match fs::read_dir(&dir) {
                 Ok(entries) => entries,
@@ -170,13 +196,10 @@ impl Project {
             };
             for entry in entries {
                 let path = entry.map_err(|error| Error::io(&dir, &error))?.path();
-                if is_issue_file(&path) {
-                    files.push(self.read(path, archived));
-                }
+                paths.push((path, archived));
             }
         }
-        files.sort_by(|a, b| a.path.cmp(&b.path));
-        Ok(files)
+        Ok(paths)
     }
 
     fn read(&self, path: PathBuf, archived: bool) -> IssueFile {
@@ -440,6 +463,20 @@ fn is_issue_file(path: &Path) -> bool {
         && fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
 }
 
+/// Whether `path` is a file named like the temporary files of [`Staged`],
+/// `.zban-*.tmp`.
+fn is_temporary_file(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| {
+        name.as_encoded_bytes()
+            .strip_prefix(TEMPORARY_PREFIX.as_bytes())
+            .is_some_and(|rest| rest.ends_with(TEMPORARY_SUFFIX.as_bytes()))
+    }) && fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file())
+}
+
+/// The start and end of a temporary file's name.
+const TEMPORARY_PREFIX: &str = ".zban-";
+const TEMPORARY_SUFFIX: &str = ".tmp";
+
 /// A fully written temporary file, removed on drop unless it was renamed.
 /// Its `.tmp` name is never taken for an issue.
 #[derive(Debug)]
@@ -451,13 +488,13 @@ struct Staged {
 impl Staged {
     fn write(dir: &Path, bytes: &[u8]) -> Result<Self> {
         loop {
-            let suffix = getrandom::u64().map_err(|error| {
+            let random = getrandom::u64().map_err(|error| {
                 Error::new(
                     ErrorCode::Io,
                     format!("cannot read operating-system randomness: {error}"),
                 )
             })?;
-            let path = dir.join(format!(".zban-{suffix:016x}.tmp"));
+            let path = dir.join(format!("{TEMPORARY_PREFIX}{random:016x}{TEMPORARY_SUFFIX}"));
             match OpenOptions::new().write(true).create_new(true).open(&path) {
                 Ok(mut file) => {
                     let staged = Self {
@@ -549,6 +586,38 @@ mod tests {
         );
         let loaded = project.load().unwrap();
         assert_eq!(loaded, vec![created]);
+        fs::remove_dir_all(project.root()).unwrap();
+    }
+
+    // @mara implements VER-CHECK
+    #[test]
+    fn check_reports_and_fix_deletes_what_interrupted_writes_leave() {
+        let project = temp_project("leftovers");
+        let created = project
+            .create(&Issue::new("Original", Timestamp::now()))
+            .unwrap();
+        fs::create_dir_all(project.archive_dir()).unwrap();
+        let before = (entries(&project.dir()), entries(&project.archive_dir()));
+        let staged = [project.dir(), project.archive_dir()]
+            .map(|dir| Staged::write(&dir, created.bytes.as_slice()).unwrap());
+        let mut paths: Vec<_> = staged.iter().map(|staged| staged.path.clone()).collect();
+        paths.sort();
+        staged.into_iter().for_each(std::mem::forget);
+
+        let findings = Project::check(project.root(), false).unwrap();
+        let reported: Vec<_> = findings
+            .iter()
+            .map(|finding| (PathBuf::from(&finding.path), finding.code))
+            .collect();
+        let expected: Vec<_> = paths
+            .into_iter()
+            .map(|path| (path, ProblemCode::TemporaryFile))
+            .collect();
+        assert_eq!(reported, expected);
+
+        assert_eq!(Project::check(project.root(), true).unwrap(), Vec::new());
+        let after = (entries(&project.dir()), entries(&project.archive_dir()));
+        assert_eq!(after, before);
         fs::remove_dir_all(project.root()).unwrap();
     }
 

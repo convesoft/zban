@@ -58,7 +58,8 @@ enum Command {
     },
     /// Report problems in `.zban/`; exits with status 1 when any is an error.
     Check {
-        /// Move misplaced files into the directory their status requires.
+        /// Move misplaced files into the directory their status requires, and
+        /// delete temporary files left by interrupted writes.
         #[arg(long)]
         fix: bool,
     },

@@ -147,6 +147,7 @@ pub enum ProblemCode {
     RelatedBothSides,
     OpenUnderClosed,
     Misplaced,
+    TemporaryFile,
 }
 
 /// How serious a `DES-CHECK` finding is. Only errors make the check fail.
@@ -192,14 +193,19 @@ impl ProblemCode {
             Self::RelatedBothSides => "related_both_sides",
             Self::OpenUnderClosed => "open_under_closed",
             Self::Misplaced => "misplaced",
+            Self::TemporaryFile => "temporary_file",
         }
     }
 
     /// The severity `REQ-CHECK` gives the code: `unknown_key`,
-    /// `related_both_sides` and `open_under_closed` are warnings.
+    /// `related_both_sides`, `open_under_closed` and `temporary_file` are
+    /// warnings.
     pub fn severity(self) -> Severity {
         match self {
-            Self::UnknownKey | Self::RelatedBothSides | Self::OpenUnderClosed => Severity::Warning,
+            Self::UnknownKey
+            | Self::RelatedBothSides
+            | Self::OpenUnderClosed
+            | Self::TemporaryFile => Severity::Warning,
             _ => Severity::Error,
         }
     }

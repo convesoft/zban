@@ -357,7 +357,7 @@ pub fn delete(project: &Project, id: &str) -> Result<IssueView> {
 }
 
 /// Checks the project that `directory` is in and, with `fix`, first moves
-/// misplaced files (`DES-CHECK`). Like `init`, it takes a directory, because
+/// misplaced files and deletes leftover temporary files (`DES-CHECK`). Like `init`, it takes a directory, because
 /// an invalid configuration is a finding rather than a failure.
 pub fn check(directory: &Path, fix: bool) -> Result<Checked> {
     Ok(Checked {

@@ -25,7 +25,7 @@ zban update zb-n938cw --append "## Summary of Changes
 Parser and writer implemented." -s done
 zban update zb-n938cw --handoff - < handoff.md   # replace the handoff note
 zban check                                  # report problems in .zban/
-zban check --fix                            # move misplaced files
+zban check --fix                            # move misplaced files, delete leftover temporary files
 ```
 
 Global options are `--json` and `-C, --directory DIR`. zban finds its project by

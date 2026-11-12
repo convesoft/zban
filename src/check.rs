@@ -1,11 +1,13 @@
 //! The integrity check and its repair (`REQ-CHECK`, `DES-CHECK`).
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::error::{ErrorCode, Result};
+use crate::error::{Error, ErrorCode, Result};
 use crate::id::Id;
 use crate::issue::{Problem, ProblemCode, Severity};
 use crate::relations::Graph;
@@ -39,11 +41,13 @@ impl Project {
     /// is the only finding.
     ///
     /// With `fix`, each misplaced file is first moved into the directory its
-    /// status requires, unless a file already exists at the target path; a
-    /// moved file is not reported. Nothing else is ever changed.
+    /// status requires, unless a file already exists at the target path, and
+    /// each leftover temporary file is deleted; a fixed file is not reported.
+    /// Nothing else is ever changed.
     ///
     /// Fails with `project_not_found` outside a project, and with `io` or
-    /// `conflict` when a directory cannot be read or a move fails.
+    /// `conflict` when a directory cannot be read or a move or deletion
+    /// fails.
     // @mara implements DES-CHECK
     pub fn check(directory: &Path, fix: bool) -> Result<Vec<Finding>> {
         let root = Self::find_root(directory)?;
@@ -55,6 +59,7 @@ impl Project {
             }
         };
         let mut files = project.load()?;
+        let mut temporary = project.temporary_files()?;
         if fix {
             for file in &mut files {
                 if is_misplaced(file) {
@@ -67,12 +72,20 @@ impl Project {
                 }
             }
             files.sort_by(|a, b| a.path.cmp(&b.path));
+            for path in temporary.drain(..) {
+                remove(&path)?;
+            }
         }
-        Ok(project.findings(&files))
+        Ok(project.findings(&files, &temporary))
     }
 
-    fn findings(&self, files: &[IssueFile]) -> Vec<Finding> {
+    fn findings(&self, files: &[IssueFile], temporary: &[PathBuf]) -> Vec<Finding> {
         let mut findings = Vec::new();
+        for path in temporary {
+            let message = "a temporary file that an interrupted write left behind; `zban check --fix` deletes it";
+            let problem = Problem::new(ProblemCode::TemporaryFile, message);
+            findings.push(Finding::new(path, problem));
+        }
         let mut by_id: BTreeMap<&Id, Vec<&IssueFile>> = BTreeMap::new();
         for file in files {
             let problems = file.problems.iter().cloned();
@@ -130,6 +143,16 @@ impl Project {
             ),
         };
         Some(Problem::new(ProblemCode::Misplaced, message))
+    }
+}
+
+/// Deletes a leftover temporary file. One that is already gone, for example
+/// because the write that made it has just finished, counts as deleted.
+fn remove(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(Error::io(path, &error)),
     }
 }
 
