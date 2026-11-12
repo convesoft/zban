@@ -127,7 +127,8 @@ pub fn snapshot(dir: &Path, skip: &[&str]) -> Vec<(PathBuf, Vec<u8>)> {
 /// its own line with `--json update ID --append -`, in rounds until a run
 /// fails with `conflict` because another run replaced the file after its
 /// read. Returns that round: each run's line and output. Each process waits
-/// for its standard input to end, which starts a round's runs together.
+/// for its standard input to end, which starts a round's runs together. Every
+/// run must succeed or fail with `conflict`.
 pub fn racing_updates(dir: &Path, id: &str) -> Vec<(String, Output)> {
     const RUNS: usize = 8;
     const ROUNDS: usize = 50;
@@ -160,6 +161,13 @@ pub fn racing_updates(dir: &Path, id: &str) -> Vec<(String, Output)> {
             .zip(children)
             .map(|(line, child)| (line, child.wait_with_output().unwrap()))
             .collect();
+        for (line, output) in &runs {
+            let code = json_error_code(output);
+            assert!(
+                output.status.success() || code.as_deref() == Some("conflict"),
+                "{line}: {code:?}"
+            );
+        }
         if runs
             .iter()
             .any(|(_, output)| json_error_code(output).as_deref() == Some("conflict"))
