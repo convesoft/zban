@@ -109,6 +109,12 @@ impl fmt::Display for Id {
     }
 }
 
+impl serde::Serialize for Id {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

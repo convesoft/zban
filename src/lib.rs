@@ -7,6 +7,7 @@ pub mod id;
 pub mod issue;
 pub mod lifecycle;
 mod markdown;
+pub mod operations;
 pub mod relations;
 pub mod store;
 pub mod timestamp;

@@ -7,6 +7,9 @@ use std::path::Path;
 /// A stable error code that agents can branch on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ErrorCode {
+    /// Unknown, missing or conflicting arguments. The command line exits
+    /// with status 2 for it.
+    Usage,
     /// No project was found above the starting directory.
     ProjectNotFound,
     /// `init` found an existing `.zban/` directory.
@@ -31,6 +34,10 @@ pub enum ErrorCode {
     OpenChildren,
     /// Deleting an issue that another issue references.
     Referenced,
+    /// A replacement's old text does not occur in the body.
+    TextNotFound,
+    /// A replacement's old text occurs more than once in the body.
+    TextAmbiguous,
     /// The file changed between reading and writing it.
     Conflict,
     /// Any other file-system failure.
@@ -41,6 +48,7 @@ impl ErrorCode {
     /// The code as it appears in JSON output.
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Usage => "usage",
             Self::ProjectNotFound => "project_not_found",
             Self::ProjectExists => "project_exists",
             Self::InvalidConfig => "invalid_config",
@@ -53,9 +61,17 @@ impl ErrorCode {
             Self::UncheckedItems => "unchecked_items",
             Self::OpenChildren => "open_children",
             Self::Referenced => "referenced",
+            Self::TextNotFound => "text_not_found",
+            Self::TextAmbiguous => "text_ambiguous",
             Self::Conflict => "conflict",
             Self::Io => "io",
         }
+    }
+}
+
+impl serde::Serialize for ErrorCode {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -65,8 +81,9 @@ impl fmt::Display for ErrorCode {
     }
 }
 
-/// A failed operation: a stable code and a message for humans.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A failed operation: a stable code and a message for humans. In JSON it is
+/// the inner object of `{"error": {"code": ..., "message": ...}}`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Error {
     pub code: ErrorCode,
     pub message: String,
@@ -78,6 +95,10 @@ impl Error {
             code,
             message: message.into(),
         }
+    }
+
+    pub fn usage(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Usage, message)
     }
 
     pub fn invalid_value(message: impl Into<String>) -> Self {

@@ -235,10 +235,21 @@ impl Project {
     pub fn create_with(
         &self,
         issue: &Issue,
+        next_id: impl FnMut() -> Result<Id>,
+    ) -> Result<IssueFile> {
+        self.create_among(&Graph::new(&self.load()?), issue, next_id)
+    }
+
+    /// [`Project::create_with`], checking relations against `graph`, a load
+    /// of this project.
+    pub(crate) fn create_among(
+        &self,
+        graph: &Graph,
+        issue: &Issue,
         mut next_id: impl FnMut() -> Result<Id>,
     ) -> Result<IssueFile> {
         let bytes = self.encode(issue)?;
-        Graph::new(&self.load()?).check(None, None, issue)?;
+        graph.check(None, None, issue)?;
         let archived = issue.status.is_closed();
         let (dir, other) = if archived {
             (self.archive_dir(), self.dir())
@@ -344,8 +355,12 @@ impl Project {
     /// changes while it is checked.
     // @mara implements REQ-RELATIONS
     pub fn delete(&self, id: &Id) -> Result<IssueFile> {
-        let files = self.load()?;
-        let graph = Graph::new(&files);
+        self.delete_among(&Graph::new(&self.load()?), id).cloned()
+    }
+
+    /// [`Project::delete`], resolving `id` and its referrers in `graph`, a
+    /// load of this project.
+    pub(crate) fn delete_among<'a>(&self, graph: &Graph<'a>, id: &Id) -> Result<&'a IssueFile> {
         let file = graph.resolve(id)?.file;
         let referrers = graph.referrers(id);
         if !referrers.is_empty() {
@@ -360,7 +375,7 @@ impl Project {
         }
         unchanged(file)?;
         fs::remove_file(&file.path).map_err(|error| Error::io(&file.path, &error))?;
-        Ok(file.clone())
+        Ok(file)
     }
 
     /// Renders an issue for writing, after checking that it is valid and
