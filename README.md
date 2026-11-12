@@ -3,8 +3,9 @@
 **zban is a file-based issue tracker for you and your coding agents.** Issues are
 Markdown files in your repository, managed through a CLI and an MCP server.
 
-> **Status:** the v1 specification is agreed and implemented; the first release
-> is still to come. Progress is tracked in [`.zban/`](.zban/).
+> **Status:** the v1 specification is agreed and implemented. Releases are
+> published on [GitHub Releases](https://github.com/convesoft/zban/releases), and
+> progress is tracked in [`.zban/`](.zban/).
 
 ## Why
 
@@ -41,7 +42,52 @@ created_at: 2026-11-11T20:00:00Z
 - [ ] Preserve unknown keys
 ```
 
-## Planned usage
+## Installation
+
+zban runs on Linux and macOS, on x86_64 and aarch64. It is distributed only
+through [GitHub Releases](https://github.com/convesoft/zban/releases), not through
+crates.io or other package managers.
+
+### Prebuilt binary
+
+Each release attaches one archive per platform, holding the `zban` binary, this
+README and the license files, and a `SHA256SUMS` file:
+
+| Platform | Archive |
+| --- | --- |
+| Linux, x86_64 | `zban-x86_64-unknown-linux-musl.tar.gz` |
+| Linux, aarch64 | `zban-aarch64-unknown-linux-musl.tar.gz` |
+| macOS, Apple silicon | `zban-aarch64-apple-darwin.tar.gz` |
+| macOS, Intel | `zban-x86_64-apple-darwin.tar.gz` |
+
+The Linux binaries are statically linked and run on any distribution. To install
+the latest release into `~/.local/bin`, set `target` to your platform's archive
+name:
+
+```sh
+target=x86_64-unknown-linux-musl
+curl -fsSLO "https://github.com/convesoft/zban/releases/latest/download/zban-$target.tar.gz"
+curl -fsSLO https://github.com/convesoft/zban/releases/latest/download/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS   # macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
+mkdir -p ~/.local/bin
+tar -xzf "zban-$target.tar.gz" -C ~/.local/bin zban
+zban --version
+```
+
+Make sure `~/.local/bin` is on your `PATH`. The macOS binaries are not notarized
+by Apple. If you downloaded the archive with a browser instead of `curl`, macOS
+blocks the binary until you run `xattr -d com.apple.quarantine ~/.local/bin/zban`.
+
+### From source
+
+With a stable Rust toolchain, build a release tag, replacing `vX.Y.Z` with the
+release you want, such as `v0.1.0`:
+
+```sh
+cargo install --locked --git https://github.com/convesoft/zban --tag vX.Y.Z
+```
+
+## Usage
 
 ```sh
 zban init
@@ -79,7 +125,15 @@ cargo test
 mara schema validate && mara project validate
 ```
 
+Pushing a tag `vX.Y.Z` that matches the version in `Cargo.toml` runs
+[`release.yml`](.github/workflows/release.yml), which builds the binaries and
+creates the GitHub release.
+
 ## License
 
-zban will be available under your choice of the MIT license or the Apache License
-2.0. The license files will be added before the first release.
+zban is available under your choice of the [MIT license](LICENSE-MIT) or the
+[Apache License 2.0](LICENSE-APACHE).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in zban by you, as defined in the Apache-2.0 license, shall be dual
+licensed as above, without any additional terms or conditions.

@@ -14,3 +14,4 @@ created_at: 2026-11-12T10:14:08Z
 
 - [ ] Decide whether agents here use the released `zban` or keep running the checkout's build, which always reads this branch's issue format
 - [ ] Update `AGENTS.md` to match
+- [ ] Update the project status line in `AGENTS.md`, which still says implementation is in progress (found in the `VAL-SCOPE-REVIEW` of zb-aapz52)

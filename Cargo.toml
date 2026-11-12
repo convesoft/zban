@@ -6,6 +6,7 @@ description = "A file-based issue tracker for you and your coding agents: Markdo
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/convesoft/zban"
 readme = "README.md"
+publish = false
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
