@@ -73,7 +73,7 @@ Archiving in bulk on an explicit command depends on someone running it, and agen
 :justifies: DES-ISSUE-FILE
 :justifies: REQ-RELATIONS
 
-Issue files are merged by Git, so the format avoids needless conflicts and drift. Each relation is stored once, on one issue. Storing both directions, such as `blocking` and `blocked_by`, lets the two disagree. There is no `updated_at`, which would conflict on every concurrent edit; Git history already records changes. Lists hold one item per line, the key order is fixed, and the ID exists only in the filename.
+Issue files are merged by Git, so the format avoids needless conflicts and drift. Each relation is stored once, on one issue. Storing both directions, such as `blocking` and `blocked_by`, lets the two disagree. There is no `updated_at`, which would conflict on every concurrent edit; Git history already records changes. Lists hold one item per line, the key order is fixed, and the ID exists only in the filename. Relations hold bare IDs, not Markdown links: a link would need rewriting in every referring issue whenever its target is archived, so closing one issue would touch others and conflict with their edits on other branches. Editors find an issue by its ID because the ID is the filename.
 :::
 
 :::mara decision ADR-CLI-AND-MCP
