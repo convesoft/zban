@@ -292,6 +292,96 @@ fn rewrite_unchanged(project: &Project, id: &str) -> String {
     fs::read_to_string(&file.path).unwrap()
 }
 
+/// Unknown entries holding block scalars, in headers written flush left and
+/// indented. `zban check` accepts each file, and a status update through the
+/// real binary writes every unknown entry back as it was read: the same lines
+/// without the header's indentation.
+// @mara implements VER-ISSUE-FILES
+#[test]
+fn unknown_block_scalars_survive_an_update_in_indented_headers() {
+    // Unknown entries written before `status:` and after `created_at:`, and
+    // the entries zban reads from them.
+    let cases: [(&str, &str, &[&str]); 8] = [
+        (
+            "notes: |\n  line one\n  line two\n",
+            "",
+            &["notes: |\n  line one\n  line two\n"],
+        ),
+        (
+            "summary: >\n  folded\n  text\n# about the status\n",
+            "",
+            &["summary: >\n  folded\n  text\n"],
+        ),
+        (
+            "notes: |-\n  stripped\n\n",
+            "",
+            &["notes: |-\n  stripped\n\n"],
+        ),
+        ("notes: |+\n  kept\n\n", "", &["notes: |+\n  kept\n\n"]),
+        ("empty: |\n", "", &["empty: |\n"]),
+        (
+            "extra:\n  nested: |\n    text\n",
+            "",
+            &["extra:\n  nested: |\n    text\n"],
+        ),
+        ("", "notes: |\n  last\n", &["notes: |\n  last\n"]),
+        (
+            "",
+            "notes: >-\n  folded\nreviewers: [ana, bo]\nestimate: 3\n",
+            &[
+                "notes: >-\n  folded\n",
+                "reviewers: [ana, bo]\n",
+                "estimate: 3\n",
+            ],
+        ),
+    ];
+    let indent = |text: &str, by: &str| -> String {
+        text.lines()
+            .map(|line| match line {
+                "" => "\n".to_owned(),
+                line => format!("{by}{line}\n"),
+            })
+            .collect()
+    };
+    let mut files = Vec::new();
+    for by in ["", "  "] {
+        for (number, (before, after, unknown)) in cases.iter().enumerate() {
+            let header = format!(
+                "title: Block scalars\n{before}status: todo\ntype: task\ncreated_at: 2026-11-12T00:00:00Z\n{after}"
+            );
+            let id = format!("zb-{}0000{number}", by.len());
+            let text = format!("---\n{}---\n\nBody\n", indent(&header, by));
+            files.push((format!(".zban/{id}.md"), text, id, *unknown));
+        }
+    }
+    let project = project(
+        "indented-block-scalars",
+        &files
+            .iter()
+            .map(|(path, text, ..)| (path.as_str(), text.as_str()))
+            .collect::<Vec<_>>(),
+    );
+    let output = zban(project.root(), &["check"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    for (_, text, id, unknown) in &files {
+        let output = zban(project.root(), &["update", id, "--status", "in-progress"]);
+        assert!(output.status.success(), "{text}{}", stderr(&output));
+        let written = fs::read_to_string(project.dir().join(format!("{id}.md"))).unwrap();
+        assert_eq!(
+            written,
+            format!(
+                "---\ntitle: Block scalars\nstatus: in-progress\ntype: task\ncreated_at: 2026-11-12T00:00:00Z\n{}---\n\nBody\n",
+                unknown.concat()
+            ),
+            "{text}"
+        );
+        assert_eq!(load_one(&project, id).issue.unwrap().unknown, *unknown);
+    }
+    let output = zban(project.root(), &["check"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+}
+
 // @mara implements VER-ISSUE-FILES
 #[test]
 fn titles_that_look_like_other_yaml_survive_a_write_and_a_read() {
