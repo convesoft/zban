@@ -6,9 +6,7 @@ zban is a file-based issue tracker for humans and coding agents. Issues are Mark
 files in the repository, managed through a Rust CLI and an MCP server. The v1
 specification is agreed; implementation is starting.
 
-zban replaces two references: [beans](https://github.com/hmans/beans), whose small
-core it follows, and an earlier attempt (`convesoft/work`) that drowned in
-coordination machinery. Staying small is an explicit goal (`GOAL-SMALL-TOOL`).
+Staying small is an explicit goal (`GOAL-SMALL-TOOL`).
 
 ## Where things live
 
@@ -55,7 +53,7 @@ as `DES-ISSUE-FILE`, `DES-ISSUE-ID` and `DES-LIFECYCLE` specify.
 
 `ADR-SMALL-SCOPE` lists what v1 excludes: claims, cross-worktree state, Git
 automation, agent execution, UIs, query languages, templates, custom fields and
-more. Do not add such capabilities, even when a neighbouring tool has them. If
+more. Do not add such capabilities, even when similar tools have them. If
 something seems necessary, propose a draft need and decision in Mara and ask the
 user before implementing it.
 

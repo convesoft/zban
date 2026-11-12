@@ -1,9 +1,6 @@
 # Decisions and risks
 
-The choices behind zban and the risks we knowingly carry. Two earlier tools
-shaped many of these: [beans](https://github.com/hmans/beans), whose small core
-zban follows, and an earlier attempt called `work`, which grew coordination
-machinery before its basic issue loop was finished.
+The choices behind zban and the risks we knowingly carry.
 
 ## Decisions
 
@@ -14,7 +11,7 @@ machinery before its basic issue loop was finished.
 :justifies: REQ-ONE-FILE
 :justifies: DES-SHARED-CORE
 
-Agents work in a checkout. External trackers need network access and credentials, and they drift from the branch being worked on. A side database, which `work` tried with SQLite before abandoning it, adds locking and recovery problems. zban stores issues only as Markdown files under `.zban/`, with no database, cache or daemon. As a consequence, issue state is local to each branch, and every command reads all issue files. That is fast enough up to several thousand issues.
+Agents work in a checkout. External trackers need network access and credentials, and they drift from the branch being worked on. A side database adds locking and recovery problems. zban stores issues only as Markdown files under `.zban/`, with no database, cache or daemon. As a consequence, issue state is local to each branch, and every command reads all issue files. That is fast enough up to several thousand issues.
 :::
 
 :::mara decision ADR-SMALL-SCOPE
@@ -24,7 +21,7 @@ Agents work in a checkout. External trackers need network access and credentials
 :justifies: REQ-NO-GIT
 :justifies: DES-CLI
 
-beans grew a GraphQL engine, a TUI, and a web UI with agent chat, worktrees and terminals. `work` grew runs, ephemeral items, claims, named sessions, handoffs, workspace cleanup and digests. Both became hard to reason about. zban v1 contains issue files, relations, readiness, lifecycle and archive, the check command, the CLI, the MCP server and the agent guide.
+Issue trackers for agents tend to grow into platforms: query engines, terminal and web UIs, agent chat, worktree and terminal management, claims, sessions and handoffs. Each addition looks reasonable, but together they make the tool hard to reason about. zban v1 contains issue files, relations, readiness, lifecycle and archive, the check command, the CLI, the MCP server and the agent guide.
 
 Excluded are claims and locking, state shared across worktrees, running Git, running agents or managing worktrees, terminal and web UIs, a query language, templates, custom fields, configurable vocabulary, manual ordering, assignees and time tracking. Adding a capability requires a recorded need and a decision first, not just precedent in another tool.
 :::
@@ -36,7 +33,7 @@ Excluded are claims and locking, state shared across worktrees, running Git, run
 :justifies: DES-READINESS
 :accepts: RISK-DUPLICATE-WORK
 
-Agents in different worktrees cannot see each other's status changes until their branches merge. `work` solved this with lock files shared through the Git common directory, at great cost in complexity. zban v1 has no claims and no assignee field. `in-progress` is a durable status in the file, and whoever runs parallel agents (a human or an orchestrator) decides who works on what. If claims prove necessary later, they will be an additional ephemeral layer that leaves the file format and the `in-progress` status unchanged.
+Agents in different worktrees cannot see each other's status changes until their branches merge. Lock files shared through the Git common directory can coordinate them, but at great cost in complexity. zban v1 has no claims and no assignee field. `in-progress` is a durable status in the file, and whoever runs parallel agents (a human or an orchestrator) decides who works on what. If claims prove necessary later, they will be an additional ephemeral layer that leaves the file format and the `in-progress` status unchanged.
 :::
 
 :::mara decision ADR-FIXED-VOCABULARY
@@ -45,7 +42,7 @@ Agents in different worktrees cannot see each other's status changes until their
 :status: accepted
 :justifies: REQ-FIXED-VOCABULARY
 
-A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. beans began configurable and later hardcoded its statuses and types. zban fixes all three sets. `draft` keeps unrefined ideas out of ready work. `cancelled` keeps abandoned work apart from delivered work. There is no milestone type; group a release with an epic or a tag. The five priorities match beans because named levels read better than numbers in prompts.
+A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. zban fixes all three sets. `draft` keeps unrefined ideas out of ready work. `cancelled` keeps abandoned work apart from delivered work. There is no milestone type; group a release with an epic or a tag. Priorities are five named levels because names read better than numbers in prompts.
 :::
 
 :::mara decision ADR-RANDOM-IDS
@@ -54,7 +51,7 @@ A configurable vocabulary forces every tool and agent to read configuration firs
 :status: accepted
 :justifies: DES-ISSUE-ID
 
-Sequential numbers collide when parallel branches create issues, and they need a shared counter. UUIDs never collide but are noisy, and the short forms people cite are only prefixes, which can become ambiguous. beans' four random base36 characters leave a noticeable chance of collisions across branches in a long-lived project. zban uses its prefix plus six random Crockford base32 characters, about a billion values per prefix, and `zban check` detects any duplicate. IDs carry no order; `created_at` provides it.
+Sequential numbers collide when parallel branches create issues, and they need a shared counter. UUIDs never collide but are noisy, and the short forms people cite are only prefixes, which can become ambiguous. Four random base36 characters, about 1.7 million values, leave a noticeable chance of collisions across branches in a long-lived project. zban uses its prefix plus six random Crockford base32 characters, about a billion values per prefix, and `zban check` detects any duplicate. IDs carry no order; `created_at` provides it.
 :::
 
 :::mara decision ADR-AUTO-ARCHIVE
@@ -64,7 +61,7 @@ Sequential numbers collide when parallel branches create issues, and they need a
 :justifies: REQ-AUTO-ARCHIVE
 :justifies: DES-LIFECYCLE
 
-beans archives in bulk on an explicit command, which agents may run only when asked, so closed issues pile up among active ones. zban moves a file into `.zban/archive/` as soon as the issue closes, and back when it reopens. The status stays authoritative, and `zban check --fix` repairs a misplaced file. The costs: a close shows up as a rename plus an edit in diffs, and an edit on one branch combined with a close on another merges as a rename/modify, which Git normally resolves.
+Archiving in bulk on an explicit command depends on someone running it, and agents may run it only when asked, so closed issues pile up among active ones. zban moves a file into `.zban/archive/` as soon as the issue closes, and back when it reopens. The status stays authoritative, and `zban check --fix` repairs a misplaced file. The costs: a close shows up as a rename plus an edit in diffs, and an edit on one branch combined with a close on another merges as a rename/modify, which Git normally resolves.
 :::
 
 :::mara decision ADR-MERGE-FRIENDLY-FORMAT
@@ -74,7 +71,7 @@ beans archives in bulk on an explicit command, which agents may run only when as
 :justifies: DES-ISSUE-FILE
 :justifies: REQ-RELATIONS
 
-Issue files are merged by Git, so the format avoids needless conflicts and drift. Each relation is stored once, on one issue. beans stored both `blocking` and `blocked_by`, and the two could disagree. There is no `updated_at`, which would conflict on every concurrent edit; Git history already records changes. Lists hold one item per line, the key order is fixed, and the ID exists only in the filename.
+Issue files are merged by Git, so the format avoids needless conflicts and drift. Each relation is stored once, on one issue. Storing both directions, such as `blocking` and `blocked_by`, lets the two disagree. There is no `updated_at`, which would conflict on every concurrent edit; Git history already records changes. Lists hold one item per line, the key order is fixed, and the ID exists only in the filename.
 :::
 
 :::mara decision ADR-CLI-AND-MCP
@@ -151,5 +148,5 @@ Two branches that edit the same lines of the same issue conflict when merged, wh
 :consequence: major
 :threatens: GOAL-SMALL-TOOL
 
-Each feature of beans or `work` looks reasonable on its own, and agents readily propose more. Accumulated features would make zban as hard to maintain as its predecessors. [[ADR-SMALL-SCOPE]] and the repository's agent instructions require a recorded need and decision before scope grows.
+Each feature of comparable tools looks reasonable on its own, and agents readily propose more. Accumulated features would make zban hard to understand and maintain. [[ADR-SMALL-SCOPE]] and the repository's agent instructions require a recorded need and decision before scope grows.
 :::
