@@ -287,7 +287,8 @@ impl Project {
         }
     }
 
-    /// Creates a new issue file with a fresh random ID.
+    /// Creates a new issue file with a fresh random ID. Kept for tests, which
+    /// write exact issues that a `CreateRequest` cannot describe.
     pub fn create(&self, issue: &Issue) -> Result<IssueFile> {
         self.create_with(issue, || Id::generate(self.prefix()))
     }
@@ -296,6 +297,7 @@ impl Project {
     /// unused in both `.zban/` and `.zban/archive/` (`DES-ISSUE-ID`). The file
     /// is linked into place, which never replaces an existing file. Its
     /// relations are checked against the project first (`REQ-RELATIONS`).
+    /// Kept for tests, which choose the IDs to draw.
     pub fn create_with(
         &self,
         issue: &Issue,
@@ -418,17 +420,12 @@ impl Project {
         Ok(Some(target))
     }
 
-    /// Deletes issue `id`. Fails with `referenced`, deleting nothing, while
+    /// Deletes issue `id`, resolving it and its referrers in `graph`, a load
+    /// of this project. Fails with `referenced`, deleting nothing, while
     /// another issue names it in a relation, and with `conflict` if the file
     /// changes while it is checked.
     // @mara implements REQ-RELATIONS
-    pub fn delete(&self, id: &Id) -> Result<IssueFile> {
-        self.delete_among(&Graph::new(&self.load()?), id).cloned()
-    }
-
-    /// [`Project::delete`], resolving `id` and its referrers in `graph`, a
-    /// load of this project.
-    pub(crate) fn delete_among<'a>(&self, graph: &Graph<'a>, id: &Id) -> Result<&'a IssueFile> {
+    pub(crate) fn delete<'a>(&self, graph: &Graph<'a>, id: &Id) -> Result<&'a IssueFile> {
         let file = graph.resolve(id)?.file;
         let referrers = graph.referrers(id);
         if !referrers.is_empty() {

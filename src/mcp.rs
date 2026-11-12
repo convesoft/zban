@@ -17,7 +17,7 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt as _};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use zban::operations::{self, CreateRequest, ListRequest, Replacement, UpdateRequest};
+use zban::operations::{self, CreateRequest, ListRequest, UpdateRequest};
 use zban::{Error, ErrorCode, Project, Result, Surface, guide};
 
 /// Serves MCP over stdio until the client disconnects. Without a
@@ -255,17 +255,6 @@ impl Server {
     }
 
     fn update(&self, args: UpdateArgs) -> Result<Document> {
-        if args.replace_old.len() != args.replace_new.len() {
-            return Err(Error::usage(
-                "give each `replace_old` text exactly one `replace_new` text, at the same position",
-            ));
-        }
-        let replacements = args
-            .replace_old
-            .into_iter()
-            .zip(args.replace_new)
-            .map(|(old, new)| Replacement { old, new })
-            .collect();
         let request = UpdateRequest {
             id: args.id,
             title: args.title,
@@ -274,24 +263,24 @@ impl Server {
             priority: args.priority,
             add_tags: args.add_tag,
             remove_tags: args.remove_tag,
-            parent: removable("parent", args.parent, args.no_parent)?,
+            parent: args.parent,
+            no_parent: args.no_parent,
             add_blocked_by: args.add_blocked_by,
             remove_blocked_by: args.remove_blocked_by,
             add_related: args.add_related,
             remove_related: args.remove_related,
-            discovered_from: removable(
-                "discovered_from",
-                args.discovered_from,
-                args.no_discovered_from,
-            )?,
+            discovered_from: args.discovered_from,
+            no_discovered_from: args.no_discovered_from,
             body: args.body,
-            replacements,
+            replace_old: args.replace_old,
+            replace_new: args.replace_new,
             append: args.append,
-            handoff: removable("handoff", args.handoff, args.no_handoff)?,
+            handoff: args.handoff,
+            no_handoff: args.no_handoff,
             force: args.force,
         };
         self.run(args.directory, |start| {
-            operations::update(&Project::discover(start)?, &request)
+            operations::update(&Project::discover(start)?, &request, Surface::Mcp)
         })
     }
 
@@ -303,18 +292,6 @@ impl Server {
 
     fn check(&self, args: CheckArgs) -> Result<Document> {
         self.run(args.directory, |start| operations::check(start, args.fix))
-    }
-}
-
-/// An optional value that an update sets with `key` or removes with
-/// `no_<key>`.
-fn removable(key: &str, value: Option<String>, remove: bool) -> Result<Option<Option<String>>> {
-    match (value, remove) {
-        (Some(_), true) => Err(Error::usage(format!(
-            "`{key}` and `no_{key}` exclude each other"
-        ))),
-        (_, true) => Ok(Some(None)),
-        (value, false) => Ok(value.map(Some)),
     }
 }
 

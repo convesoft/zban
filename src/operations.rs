@@ -155,8 +155,8 @@ pub struct ListRequest {
     pub all: bool,
 }
 
-/// An `update` request. `Some(None)` in `parent` or `discovered_from`
-/// removes the value.
+/// An `update` request. A `no_<key>` flag removes the value and excludes
+/// `<key>`.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateRequest {
     pub id: String,
@@ -166,29 +166,27 @@ pub struct UpdateRequest {
     pub priority: Option<String>,
     pub add_tags: Vec<String>,
     pub remove_tags: Vec<String>,
-    pub parent: Option<Option<String>>,
+    pub parent: Option<String>,
+    pub no_parent: bool,
     pub add_blocked_by: Vec<String>,
     pub remove_blocked_by: Vec<String>,
     pub add_related: Vec<String>,
     pub remove_related: Vec<String>,
-    pub discovered_from: Option<Option<String>>,
-    /// Replaces the body. Applied before `replacements` and `append`.
+    pub discovered_from: Option<String>,
+    pub no_discovered_from: bool,
+    /// Replaces the body. Applied before the replacements and `append`.
     pub body: Option<String>,
-    /// Applied in order, after `body` and before `append`.
-    pub replacements: Vec<Replacement>,
+    /// Texts that each occur exactly once in the body, each replaced by the
+    /// `replace_new` text at the same position. Applied in order, after
+    /// `body` and before `append`.
+    pub replace_old: Vec<String>,
+    pub replace_new: Vec<String>,
     pub append: Option<String>,
-    /// Writes the handoff note, or with `Some(None)` removes it
-    /// (`DES-HANDOFF`). Applied after `append`.
-    pub handoff: Option<Option<String>>,
+    /// Writes the handoff note (`DES-HANDOFF`). Applied after `append`.
+    pub handoff: Option<String>,
+    pub no_handoff: bool,
     /// Skips the closing rules of `DES-LIFECYCLE`.
     pub force: bool,
-}
-
-/// One exact text replacement in the body.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Replacement {
-    pub old: String,
-    pub new: String,
 }
 
 /// Creates a project in `directory`.
@@ -309,8 +307,17 @@ pub fn show(project: &Project, ids: &[String]) -> Result<Issues<IssueDetail>> {
 
 /// Updates one issue. The whole request is validated before anything is
 /// written, and an issue the request leaves unchanged is not rewritten.
+/// Usage errors name the parameters the way `surface` does.
 // @mara implements REQ-BODY-EDITS
-pub fn update(project: &Project, request: &UpdateRequest) -> Result<IssueView> {
+pub fn update(project: &Project, request: &UpdateRequest, surface: Surface) -> Result<IssueView> {
+    let replacements = replacements(request, surface)?;
+    let parent = removable("parent", request.parent.as_deref(), request.no_parent)?;
+    let discovered_from = removable(
+        "discovered_from",
+        request.discovered_from.as_deref(),
+        request.no_discovered_from,
+    )?;
+    let handoff = removable("handoff", request.handoff.as_deref(), request.no_handoff)?;
     let prefix = project.prefix();
     let id = named(prefix, &request.id)?;
     let add_blocked_by = references(prefix, "blocked_by", &request.add_blocked_by)?;
@@ -337,8 +344,8 @@ pub fn update(project: &Project, request: &UpdateRequest) -> Result<IssueView> {
             issue.tags.push(tag.clone());
         }
     }
-    if let Some(parent) = &request.parent {
-        issue.parent = optional_reference(prefix, "parent", parent.as_deref())?;
+    if let Some(parent) = parent {
+        issue.parent = optional_reference(prefix, "parent", parent)?;
     }
     issue
         .blocked_by
@@ -355,11 +362,10 @@ pub fn update(project: &Project, request: &UpdateRequest) -> Result<IssueView> {
     for other in &add_related {
         graph.add_related(&id, &mut issue, other);
     }
-    if let Some(discovered_from) = &request.discovered_from {
-        issue.discovered_from =
-            optional_reference(prefix, "discovered_from", discovered_from.as_deref())?;
+    if let Some(discovered_from) = discovered_from {
+        issue.discovered_from = optional_reference(prefix, "discovered_from", discovered_from)?;
     }
-    edit_body(&mut issue.body, request)?;
+    edit_body(&mut issue.body, request, &replacements, handoff)?;
     graph.check(Some(&id), Some(found.issue), &issue)?;
 
     // The issue first: `save` refuses an unfinished close before it writes.
@@ -380,7 +386,7 @@ pub fn delete(project: &Project, id: &str) -> Result<IssueView> {
     let files = project.load()?;
     let graph = Graph::new(&files);
     let view = IssueView::of(&graph, graph.resolve(&id)?);
-    project.delete_among(&graph, &id)?;
+    project.delete(&graph, &id)?;
     Ok(view)
 }
 
@@ -494,19 +500,59 @@ fn warnings(files: &[IssueFile], graph: &Graph) -> Vec<Warning> {
     warnings
 }
 
-/// Applies the body edits of `request` in order: the new body, the
-/// replacements, the appended text, then the handoff note (`DES-CLI`).
-fn edit_body(body: &mut String, request: &UpdateRequest) -> Result<()> {
+/// The texts to replace in the body, paired with their replacements by
+/// position. Fails with `usage` when the counts differ.
+fn replacements(request: &UpdateRequest, surface: Surface) -> Result<Vec<(&str, &str)>> {
+    if request.replace_old.len() != request.replace_new.len() {
+        return Err(Error::usage(match surface {
+            Surface::Cli => "give each --replace-old exactly one --replace-new, in the same order",
+            Surface::Mcp => {
+                "give each `replace_old` text exactly one `replace_new` text, at the same position"
+            }
+        }));
+    }
+    let pairs = request.replace_old.iter().zip(&request.replace_new);
+    Ok(pairs
+        .map(|(old, new)| (old.as_str(), new.as_str()))
+        .collect())
+}
+
+/// The change to an optional value that an update sets with `key` or
+/// removes with `no_<key>`: `Some(None)` removes it. Fails with `usage` when
+/// both are given, which the command line already rejects while parsing.
+fn removable<'a>(
+    key: &str,
+    value: Option<&'a str>,
+    remove: bool,
+) -> Result<Option<Option<&'a str>>> {
+    match (value, remove) {
+        (Some(_), true) => Err(Error::usage(format!(
+            "`{key}` and `no_{key}` exclude each other"
+        ))),
+        (_, true) => Ok(Some(None)),
+        (value, false) => Ok(value.map(Some)),
+    }
+}
+
+/// Applies the body edits in order: the new body of `request`, the
+/// `replacements`, the text `request` appends, then the `handoff` change
+/// (`DES-CLI`).
+fn edit_body(
+    body: &mut String,
+    request: &UpdateRequest,
+    replacements: &[(&str, &str)],
+    handoff: Option<Option<&str>>,
+) -> Result<()> {
     if let Some(text) = &request.body {
         *body = stored(text);
     }
-    for replacement in &request.replacements {
-        *body = replace_once(body, replacement)?;
+    for (old, new) in replacements {
+        *body = replace_once(body, old, new)?;
     }
     if let Some(text) = &request.append {
         *body = joined(body, text);
     }
-    match &request.handoff {
+    match handoff {
         Some(Some(text)) => *body = handoff::write(body, text, &Timestamp::now())?,
         Some(None) => *body = handoff::remove(body)?,
         None => {}
@@ -514,11 +560,10 @@ fn edit_body(body: &mut String, request: &UpdateRequest) -> Result<()> {
     Ok(())
 }
 
-/// Replaces the one occurrence of `replacement.old` in `body`. Fails with
+/// Replaces the one occurrence of `old` in `body` with `new`. Fails with
 /// `text_not_found` or `text_ambiguous` otherwise; overlapping occurrences
 /// count separately.
-fn replace_once(body: &str, replacement: &Replacement) -> Result<String> {
-    let old = replacement.old.as_str();
+fn replace_once(body: &str, old: &str, new: &str) -> Result<String> {
     let Some(first) = old.chars().next() else {
         return Err(Error::usage("the text to replace must not be empty"));
     };
@@ -536,12 +581,7 @@ fn replace_once(body: &str, replacement: &Replacement) -> Result<String> {
             ),
         ));
     }
-    Ok(format!(
-        "{}{}{}",
-        &body[..at],
-        replacement.new,
-        &body[at + old.len()..]
-    ))
+    Ok(format!("{}{new}{}", &body[..at], &body[at + old.len()..]))
 }
 
 /// Fails with `usage` when a request both adds and removes one value.
@@ -615,19 +655,14 @@ fn distinct<T: PartialEq>(values: Vec<T>) -> Vec<T> {
 mod tests {
     use super::*;
 
-    fn replace(body: &str, old: &str, new: &str) -> Result<String> {
-        let replacement = Replacement {
-            old: old.into(),
-            new: new.into(),
-        };
-        replace_once(body, &replacement)
-    }
-
     #[test]
     fn replacements_need_exactly_one_occurrence() {
-        assert_eq!(replace("- [ ] a\n", "[ ]", "[x]").unwrap(), "- [x] a\n");
-        assert_eq!(replace("é é\n", "é ", "e ").unwrap(), "e é\n");
-        let code = |old: &str| replace("aaa b b\n", old, "x").unwrap_err().code;
+        assert_eq!(
+            replace_once("- [ ] a\n", "[ ]", "[x]").unwrap(),
+            "- [x] a\n"
+        );
+        assert_eq!(replace_once("é é\n", "é ", "e ").unwrap(), "e é\n");
+        let code = |old: &str| replace_once("aaa b b\n", old, "x").unwrap_err().code;
         assert_eq!(code("c"), ErrorCode::TextNotFound);
         assert_eq!(code("b"), ErrorCode::TextAmbiguous);
         assert_eq!(code("aa"), ErrorCode::TextAmbiguous, "overlapping");
@@ -642,7 +677,7 @@ mod tests {
                 append: Some(text.into()),
                 ..Default::default()
             };
-            edit_body(&mut body, &request).unwrap();
+            edit_body(&mut body, &request, &[], None).unwrap();
             body
         };
         assert_eq!(append("a\n", "b"), "a\n\nb\n");

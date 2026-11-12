@@ -535,6 +535,60 @@ fn invalid_arguments_give_the_same_error_codes() {
     assert_eq!(files(&s.mcp), before);
 }
 
+/// Replacement texts that do not pair up, and a value both set and removed,
+/// fail with `usage` in words that name each surface's parameters.
+// @mara implements VER-SURFACE-PARITY
+#[test]
+fn unpaired_replacements_and_set_and_removed_values_are_usage_errors() {
+    let mut s = Surfaces::new("pairs");
+    let before = snapshot(&s.cli.join(".zban"), &[]);
+    let message = |document: &Value| document["error"]["message"].as_str().unwrap().to_owned();
+
+    let (status, document) = s.both(
+        &[
+            "update",
+            B,
+            "--replace-old",
+            "Step",
+            "--replace-old",
+            "Blocked",
+            "--replace-new",
+            "x",
+        ],
+        "update_issue",
+        json!({"id": B, "replace_old": ["Step", "Blocked"], "replace_new": ["x"]}),
+    );
+    assert_eq!(status, 2);
+    assert_eq!(
+        message(&document),
+        "give each --replace-old exactly one --replace-new, in the same order"
+    );
+    let called = s.client.call(
+        "update_issue",
+        json!({"id": B, "replace_old": ["Step"], "replace_new": ["x", "y"]}),
+    );
+    assert_eq!(error_code(&called), "usage");
+    assert_eq!(
+        message(&called.document),
+        "give each `replace_old` text exactly one `replace_new` text, at the same position"
+    );
+
+    for (key, value) in [("parent", E), ("discovered_from", A), ("handoff", "x")] {
+        let mut arguments = json!({"id": B});
+        arguments[key] = json!(value);
+        arguments[format!("no_{key}")] = json!(true);
+        let called = s.client.call("update_issue", arguments);
+        assert_eq!(error_code(&called), "usage", "{key}");
+        assert_eq!(
+            message(&called.document),
+            format!("`{key}` and `no_{key}` exclude each other")
+        );
+    }
+    let files = |root: &Path| snapshot(&root.join(".zban"), &[]);
+    assert_eq!(files(&s.cli), before);
+    assert_eq!(files(&s.mcp), before);
+}
+
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn a_check_that_finds_errors_is_a_result() {
