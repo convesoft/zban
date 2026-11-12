@@ -13,8 +13,16 @@ pub enum ErrorCode {
     ProjectExists,
     /// The project configuration is malformed or unsupported.
     InvalidConfig,
+    /// An ID names a file in both `.zban/` and `.zban/archive/`.
+    AmbiguousId,
+    /// The operation needs an issue file that cannot be read.
+    Unreadable,
     /// A value breaks the issue file format or the project layout.
     InvalidValue,
+    /// `done` with unchecked task items, without force.
+    UncheckedItems,
+    /// `done` or `cancelled` with open children, without force.
+    OpenChildren,
     /// The file changed between reading and writing it.
     Conflict,
     /// Any other file-system failure.
@@ -28,7 +36,11 @@ impl ErrorCode {
             Self::ProjectNotFound => "project_not_found",
             Self::ProjectExists => "project_exists",
             Self::InvalidConfig => "invalid_config",
+            Self::AmbiguousId => "ambiguous_id",
+            Self::Unreadable => "unreadable",
             Self::InvalidValue => "invalid_value",
+            Self::UncheckedItems => "unchecked_items",
+            Self::OpenChildren => "open_children",
             Self::Conflict => "conflict",
             Self::Io => "io",
         }
