@@ -4,6 +4,7 @@ mod common;
 
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use common::{
     copy_repository_backlog, json_error_code, racing_updates, stderr, temp_dir, write_files, zban,
@@ -882,6 +883,36 @@ fn create_never_replaces_an_existing_file() {
     assert_eq!(fs::read(&existing.path).unwrap(), existing.bytes);
     assert_eq!(project.load().unwrap().len(), 2);
     assert_no_temporary_files(&project.dir());
+}
+
+// @mara implements VER-ISSUE-FILES
+#[test]
+fn init_that_cannot_write_its_configuration_leaves_no_zban() {
+    let dir = temp_dir();
+    let root = dir.path();
+    // A file size limit of zero makes writing the configuration fail with
+    // `EFBIG` on any file system and for any user, hard links or not. The
+    // shell ignores the signal that such a write raises, and zban inherits
+    // that.
+    let output = Command::new("sh")
+        .current_dir(root)
+        .args([
+            "-c",
+            r#"trap '' XFSZ; ulimit -f 0; exec "$0" --json init"#,
+            env!("CARGO_BIN_EXE_zban"),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert_eq!(json_error_code(&output).as_deref(), Some("io"));
+    assert_eq!(fs::read_dir(root).unwrap().count(), 0);
+
+    let output = zban(root, &["init"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(root.join(".zban/config.toml")).unwrap(),
+        CONFIG
+    );
 }
 
 fn assert_no_temporary_files(dir: &Path) {
