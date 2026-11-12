@@ -13,6 +13,7 @@ use crate::config::Config;
 use crate::error::{Error, ErrorCode, Result};
 use crate::id::{Id, Prefix};
 use crate::issue::{Issue, Problem, ProblemCode};
+use crate::relations::Graph;
 
 /// The project directory inside the project root.
 pub const DIR: &str = ".zban";
@@ -47,6 +48,22 @@ pub struct IssueFile {
     pub issue: Option<Issue>,
     /// Problems with this file, including warnings on readable issues.
     pub problems: Vec<Problem>,
+}
+
+impl IssueFile {
+    /// The `unreadable` error for an operation that needs this file's issue,
+    /// naming the first problem that makes it unreadable.
+    pub(crate) fn unreadable(&self) -> Error {
+        let reason = self.problems.iter().find(|problem| problem.code.is_error());
+        Error::new(
+            ErrorCode::Unreadable,
+            format!(
+                "{} cannot be read{}; fix it by hand first",
+                self.path.display(),
+                reason.map_or_else(String::new, |problem| format!(": {}", problem.message))
+            ),
+        )
+    }
 }
 
 impl Project {
@@ -213,13 +230,15 @@ impl Project {
 
     /// Creates a new issue file, drawing IDs from `next_id` until one is
     /// unused in both `.zban/` and `.zban/archive/` (`DES-ISSUE-ID`). The file
-    /// is linked into place, which never replaces an existing file.
+    /// is linked into place, which never replaces an existing file. Its
+    /// relations are checked against the project first (`REQ-RELATIONS`).
     pub fn create_with(
         &self,
         issue: &Issue,
         mut next_id: impl FnMut() -> Result<Id>,
     ) -> Result<IssueFile> {
         let bytes = self.encode(issue)?;
+        Graph::new(&self.load()?).check(None, None, issue)?;
         let archived = issue.status.is_closed();
         let (dir, other) = if archived {
             (self.archive_dir(), self.dir())
@@ -261,23 +280,7 @@ impl Project {
             // Keep the file's permissions; a failure here is not worth failing for.
             let _ = fs::set_permissions(&staged.path, metadata.permissions());
         }
-        let conflict = |what: &str| {
-            Error::new(
-                ErrorCode::Conflict,
-                format!(
-                    "{} {what} since it was read; show the issue again and retry",
-                    file.path.display()
-                ),
-            )
-        };
-        match fs::read(&file.path) {
-            Ok(current) if current == file.bytes => {}
-            Ok(_) => return Err(conflict("changed")),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Err(conflict("was moved or deleted"));
-            }
-            Err(error) => return Err(Error::io(&file.path, &error)),
-        }
+        unchanged(file)?;
         staged.rename(&file.path)?;
         Ok(self.file(file.path.clone(), file.archived, bytes))
     }
@@ -299,13 +302,7 @@ impl Project {
         }
         if let Err(error) = fs::rename(&file.path, &target) {
             if error.kind() == io::ErrorKind::NotFound && !file.path.exists() {
-                return Err(Error::new(
-                    ErrorCode::Conflict,
-                    format!(
-                        "{} was moved or deleted since it was read; show the issue again and retry",
-                        file.path.display()
-                    ),
-                ));
+                return Err(conflict(file, "was moved or deleted"));
             }
             return Err(Error::io(&target, &error));
         }
@@ -342,6 +339,30 @@ impl Project {
         Ok(Some(target))
     }
 
+    /// Deletes issue `id`. Fails with `referenced`, deleting nothing, while
+    /// another issue names it in a relation, and with `conflict` if the file
+    /// changes while it is checked.
+    // @mara implements REQ-RELATIONS
+    pub fn delete(&self, id: &Id) -> Result<IssueFile> {
+        let files = self.load()?;
+        let graph = Graph::new(&files);
+        let file = graph.resolve(id)?.file;
+        let referrers = graph.referrers(id);
+        if !referrers.is_empty() {
+            let names: Vec<_> = referrers.iter().map(|id| id.as_str()).collect();
+            return Err(Error::new(
+                ErrorCode::Referenced,
+                format!(
+                    "{id} is referenced by {}; remove those relations first",
+                    names.join(", ")
+                ),
+            ));
+        }
+        unchanged(file)?;
+        fs::remove_file(&file.path).map_err(|error| Error::io(&file.path, &error))?;
+        Ok(file.clone())
+    }
+
     /// Renders an issue for writing, after checking that it is valid and
     /// reads back unchanged, so a write never leaves a file that zban would
     /// read differently.
@@ -355,6 +376,30 @@ impl Project {
         }
         Ok(text.into_bytes())
     }
+}
+
+/// Fails with `conflict` unless `file` still holds the bytes that were read
+/// (`REQ-NO-LOST-UPDATES`).
+fn unchanged(file: &IssueFile) -> Result<()> {
+    match fs::read(&file.path) {
+        Ok(current) if current == file.bytes => Ok(()),
+        Ok(_) => Err(conflict(file, "changed")),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            Err(conflict(file, "was moved or deleted"))
+        }
+        Err(error) => Err(Error::io(&file.path, &error)),
+    }
+}
+
+/// The `conflict` error for a file that `what` happened to since it was read.
+fn conflict(file: &IssueFile, what: &str) -> Error {
+    Error::new(
+        ErrorCode::Conflict,
+        format!(
+            "{} {what} since it was read; show the issue again and retry",
+            file.path.display()
+        ),
+    )
 }
 
 /// Every `*.md` file is an issue, whatever its name.
