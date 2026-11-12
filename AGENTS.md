@@ -2,15 +2,20 @@
 
 **IMPORTANT**: before you do anything else, run `zban prime` and follow its output.
 
-zban has no release yet, so run the binary built from your checkout:
-`cargo run -q -- prime`, and `cargo run -q -- <command>` wherever the guide
-says `zban <command>`. The rules below add to the guide.
+Use the `zban` on your `PATH`, installed from a GitHub release (see
+`README.md`) or with `cargo install --path . --locked` from this checkout, and
+the zban MCP server configured in `.mcp.json`, which starts `zban mcp` from
+`PATH`. In a worktree, pass `directory` on every MCP call or start the session
+in that worktree. Use `cargo run -q -- <command>` only to try out an unreleased
+change to zban itself that the task depends on, such as a new option or a
+changed issue format; the installed `zban` reads and writes the same issue
+format as `main`. The rules below add to the guide.
 
 ## Project
 
 zban is a file-based issue tracker for humans and coding agents. Issues are Markdown
 files in the repository, managed through a Rust CLI and an MCP server. The v1
-specification is agreed; implementation is in progress.
+specification is implemented and released as v0.1.0.
 
 Staying small is an explicit goal (`GOAL-SMALL-TOOL`).
 
