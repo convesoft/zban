@@ -95,6 +95,6 @@ Remove a page's "not implemented yet" note once the feature works.
 
 ## Commits
 
-Use Conventional Commits (`<type>(<scope>): <imperative summary>`), and add a
+Use Conventional Commits without a scope (`<type>: <imperative summary>`), and add a
 `Refs: zb-xxxxxx` footer naming the issue(s) involved. Mark breaking changes
 with `!`.
