@@ -17,7 +17,7 @@ use zban::{Project, Severity};
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
 
 /// The codes of the `DES-CHECK` table.
-const DES_CHECK_CODES: [&str; 12] = [
+const DES_CHECK_CODES: [&str; 13] = [
     "invalid_config",
     "invalid_filename",
     "unparseable",
@@ -30,6 +30,7 @@ const DES_CHECK_CODES: [&str; 12] = [
     "related_both_sides",
     "open_under_closed",
     "misplaced",
+    "temporary_file",
 ];
 
 /// A hand-written issue with `status`, extra `header` lines and no body. A
@@ -43,6 +44,27 @@ fn issue(status: &str, header: &str) -> String {
     format!(
         "---\ntitle: Issue\nstatus: {status}\ntype: task\n{header}created_at: 2026-11-11T20:00:00Z\n{closed}---\n"
     )
+}
+
+/// The temporary file of an interrupted write, as zban names them.
+const TEMPORARY: &str = ".zban/.zban-0123456789abcdef.tmp";
+
+/// Files whose names only resemble a temporary file, or that are not
+/// directly inside `.zban/` or `.zban/archive/`. Check neither reports nor
+/// deletes them.
+fn lookalikes() -> Vec<(&'static str, String)> {
+    [
+        ".zban/zban-0123456789abcdef.tmp",
+        ".zban/.zban-0123456789abcdef.txt",
+        ".zban/.zban.tmp",
+        ".zban/notes.tmp",
+        ".zban/.zban-directory.tmp/.zban-0123456789abcdef.tmp",
+        ".zban/archive/old/.zban-0123456789abcdef.tmp",
+        ".zban-0123456789abcdef.tmp",
+    ]
+    .into_iter()
+    .map(|path| (path, "not zban's\n".to_owned()))
+    .collect()
 }
 
 /// A header that Git left with conflict markers after a merge.
@@ -128,6 +150,7 @@ fn corpus() -> Vec<Case> {
             (".zban/notes.md", "# Notes\n".to_owned()),
             (".zban/zb-cccccc.md", CONFLICTED.to_owned()),
             (".zban/zb-dddddd.md", issue("done", "")),
+            (TEMPORARY, "partial".to_owned()),
         ]
     };
     let invalid_config = |name, config: &str| {
@@ -361,6 +384,28 @@ fn corpus() -> Vec<Case> {
                 (".zban/zb-aaaaaa.md", "error", "misplaced"),
             ],
         },
+        Case {
+            name: "temporary-file",
+            files: [
+                vec![
+                    (TEMPORARY, "---\ntitle: Partial".to_owned()),
+                    (".zban/.zban-.tmp", String::new()),
+                    (".zban/archive/.zban-fedcba9876543210.tmp", String::new()),
+                    (".zban/zb-aaaaaa.md", issue("todo", "")),
+                ],
+                lookalikes(),
+            ]
+            .concat(),
+            findings: vec![
+                (".zban/.zban-.tmp", "warning", "temporary_file"),
+                (TEMPORARY, "warning", "temporary_file"),
+                (
+                    ".zban/archive/.zban-fedcba9876543210.tmp",
+                    "warning",
+                    "temporary_file",
+                ),
+            ],
+        },
     ]
 }
 
@@ -421,27 +466,31 @@ fn only_warnings_exit_zero_and_a_clean_project_prints_nothing() {
 
 // @mara implements VER-CHECK
 #[test]
-fn fix_moves_only_misplaced_files() {
-    let root = project(
-        "fix",
-        &[
-            (".zban/zb-aaaaaa.md", issue("done", "")),
-            (
-                ".zban/archive/zb-bbbbbb.md",
-                issue("todo", "blocked_by:\n  - zb-000000\nassignee: alice\n"),
-            ),
-            (".zban/zb-cccccc.md", CONFLICTED.to_owned()),
-            (".zban/zb-dddddd.md", issue("todo", "parent: zb-aaaaaa\n")),
-            (".zban/archive/zb-eeeeee.md", issue("cancelled", "")),
-            (
-                ".zban/zb-ffffff.md",
-                issue("todo", "parent: zb-gggggg\nblocked_by:\n  - zb-gggggg\n"),
-            ),
-            (".zban/zb-gggggg.md", issue("todo", "")),
-        ],
-    );
+fn fix_moves_only_misplaced_files_and_deletes_only_temporary_files() {
+    let issues = [
+        (".zban/zb-aaaaaa.md", issue("done", "")),
+        (
+            ".zban/archive/zb-bbbbbb.md",
+            issue("todo", "blocked_by:\n  - zb-000000\nassignee: alice\n"),
+        ),
+        (".zban/zb-cccccc.md", CONFLICTED.to_owned()),
+        (".zban/zb-dddddd.md", issue("todo", "parent: zb-aaaaaa\n")),
+        (".zban/archive/zb-eeeeee.md", issue("cancelled", "")),
+        (
+            ".zban/zb-ffffff.md",
+            issue("todo", "parent: zb-gggggg\nblocked_by:\n  - zb-gggggg\n"),
+        ),
+        (".zban/zb-gggggg.md", issue("todo", "")),
+    ];
+    let temporary = [
+        (TEMPORARY, "---\ntitle: Partial".to_owned()),
+        (".zban/archive/.zban-fedcba9876543210.tmp", String::new()),
+    ];
+    let root = project("fix", &[&issues[..], &temporary, &lookalikes()].concat());
     let (_, before) = check(&root, &[]);
-    assert!(before.iter().any(|(_, _, code)| code == "misplaced"));
+    for code in ["misplaced", "temporary_file"] {
+        assert!(before.iter().any(|(_, _, found)| found == code), "{code}");
+    }
     let before_fix = files(&root);
 
     let (status, fixed) = check(&root, &["--fix"]);
@@ -455,13 +504,19 @@ fn fix_moves_only_misplaced_files() {
     assert_eq!(fixed, remaining);
     assert_eq!(status, 1);
 
-    // Only the two misplaced files moved, each with its bytes unchanged.
+    // Only the two misplaced files moved, each with its bytes unchanged, and
+    // only the two temporary files are gone.
     let expected = moved(
         before_fix,
         ".zban/zb-aaaaaa.md",
         ".zban/archive/zb-aaaaaa.md",
     );
-    let expected = moved(expected, ".zban/archive/zb-bbbbbb.md", ".zban/zb-bbbbbb.md");
+    let mut expected = moved(expected, ".zban/archive/zb-bbbbbb.md", ".zban/zb-bbbbbb.md");
+    for (path, _) in &temporary {
+        expected
+            .remove(Path::new(path))
+            .expect("the file was there");
+    }
     assert_eq!(files(&root), expected);
 
     assert_eq!(check(&root, &[]), (1, remaining));
@@ -526,6 +581,7 @@ fn findings_carry_severity_code_absolute_path_and_message() {
                 ".zban/zb-cccccc.md",
                 issue("todo", "blocked_by:\n  - zb-bbbbbb\n"),
             ),
+            (TEMPORARY, String::new()),
         ],
     );
     let findings = Project::check(&root, false).unwrap();
@@ -548,6 +604,12 @@ fn findings_carry_severity_code_absolute_path_and_message() {
     assert_eq!(
         summary,
         [
+            (
+                TEMPORARY,
+                Severity::Warning,
+                "temporary_file",
+                "a temporary file that an interrupted write left behind; `zban check --fix` deletes it",
+            ),
             (
                 ".zban/zb-aaaaaa.md",
                 Severity::Error,

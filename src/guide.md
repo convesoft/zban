@@ -104,4 +104,5 @@ case, and every command takes `-C DIR` to act as if started in `DIR`.
 - `zban delete ID`: only for an issue no other issue refers to. To drop work,
   cancel the issue instead.
 - `zban check [--fix]`: reports problems in `.zban/` with stable codes and
-  exits with status 1 when any is an error. `--fix` only moves misplaced files.
+  exits with status 1 when any is an error. `--fix` only moves misplaced files
+  and deletes leftover temporary files.

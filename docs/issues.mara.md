@@ -131,7 +131,8 @@ $ zban check
 `zban check` exits with status 1 when it finds an error. Warnings alone, such as
 an open issue under a closed parent, exit 0. `zban check --fix` moves each file
 that is in the wrong directory for its status, for example after an interrupted
-close, and leaves every other problem for you to fix.
+close, deletes the `.zban-*.tmp` files that interrupted writes left behind, and
+leaves every other problem for you to fix.
 
 ## Requirements
 
@@ -243,7 +244,7 @@ Closing an issue as `done` or `cancelled` moves its file to `.zban/archive/`, an
 :satisfies: NEED-INTEGRITY
 :mitigates: RISK-ID-COLLISION
 
-`zban check` examines the whole project and reports each problem with its file and a stable code: malformed configuration, filenames that are not valid IDs, unparseable files, missing required fields, invalid values, unknown keys, duplicate IDs, references to unknown issues or to the issue itself, cycles and blockers on an ancestor as defined in [[REQ-RELATIONS]], a `related` link stored on both issues, open issues under a closed parent, and files in the wrong directory for their status. Unknown keys, a `related` link stored on both issues, and an open issue under a closed parent are warnings. Every other finding is an error, and only errors make the check fail. `zban check --fix` repairs only file placement. Every other finding is left for a human or agent to edit.
+`zban check` examines the whole project and reports each problem with its file and a stable code: malformed configuration, filenames that are not valid IDs, unparseable files, missing required fields, invalid values, unknown keys, duplicate IDs, references to unknown issues or to the issue itself, cycles and blockers on an ancestor as defined in [[REQ-RELATIONS]], a `related` link stored on both issues, open issues under a closed parent, files in the wrong directory for their status, and temporary files left behind by an interrupted write. Unknown keys, a `related` link stored on both issues, an open issue under a closed parent and a leftover temporary file are warnings. Every other finding is an error, and only errors make the check fail. `zban check --fix` repairs only file placement and deletes leftover temporary files. Every other finding is left for a human or agent to edit.
 :::
 
 ## Design
@@ -272,7 +273,7 @@ prefix = "zb"        # ID prefix: 1-8 lowercase ASCII letters or digits, startin
 
 Unknown configuration keys are errors. `zban init` creates the directory and the configuration. The prefix is `zb` unless `--prefix` gives another one; a value that breaks the prefix rule above is rejected. zban finds the project by walking up from the working directory to the nearest `.zban/config.toml`, as far as the filesystem root. The global `-C, --directory DIR` option makes zban behave as if started in `DIR`: the search starts there, and `init` creates `.zban/` there.
 
-Every `*.md` file directly inside `.zban/` or `.zban/archive/` is an issue. Other files and subdirectories are ignored. Open issues (`draft`, `todo`, `in-progress`) belong in `.zban/`, and closed issues (`done`, `cancelled`) belong in `.zban/archive/`.
+Every `*.md` file directly inside `.zban/` or `.zban/archive/` is an issue. Other files and subdirectories are ignored, except that `zban check` reports the temporary files of interrupted writes ([[DES-CHECK]]). Open issues (`draft`, `todo`, `in-progress`) belong in `.zban/`, and closed issues (`done`, `cancelled`) belong in `.zban/archive/`.
 :::
 
 :::mara design DES-ISSUE-ID
@@ -377,8 +378,9 @@ Any status can change to any other status; zban enforces no workflow beyond thes
 | `related_both_sides` | warning | The same `related` link is stored on both issues |
 | `open_under_closed` | warning | An open issue whose parent is closed |
 | `misplaced` | error | A file in the wrong directory for its status |
+| `temporary_file` | warning | A file named `.zban-*.tmp` directly inside `.zban/` or `.zban/archive/`. zban writes through such files ([[REQ-PRESERVE-CONTENT]]), and an interrupted write leaves one behind. |
 
-`--fix` moves each misplaced file into the directory its status requires, unless a file already exists at the target path; that finding then remains. The fixed findings are not reported.
+`--fix` moves each misplaced file into the directory its status requires, unless a file already exists at the target path; that finding then remains. It also deletes each leftover temporary file. The fixed findings are not reported. Because zban takes no locks ([[REQ-NO-LOST-UPDATES]]), `--fix` can delete the temporary file of a write that is still running; that write then fails with `io` and leaves its issue unchanged.
 :::
 
 ## Scenario
