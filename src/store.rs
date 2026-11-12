@@ -251,8 +251,8 @@ impl Project {
     /// Replaces a file read earlier with `issue`, in place. Fails with
     /// `conflict`, leaving the file alone, if it no longer holds the bytes
     /// that were read. The file stays in its directory even when the status
-    /// now belongs in the other one; moving it is a separate step
-    /// (`DES-LIFECYCLE`).
+    /// now belongs in the other one; [`Project::place`] moves it, and
+    /// [`Project::save`] applies the whole of `DES-LIFECYCLE`.
     pub fn replace(&self, file: &IssueFile, issue: &Issue) -> Result<IssueFile> {
         let bytes = self.encode(issue)?;
         let dir = file.path.parent().unwrap_or(Path::new("."));
@@ -280,6 +280,66 @@ impl Project {
         }
         staged.rename(&file.path)?;
         Ok(self.file(file.path.clone(), file.archived, bytes))
+    }
+
+    /// Renames a file into the directory its status requires: `.zban/archive/`
+    /// when closed, `.zban/` when open (`DES-PROJECT-LAYOUT`). A file already
+    /// there, or one without a readable issue, is returned unchanged. Fails
+    /// with `ambiguous_id`, moving nothing, when the target name is taken.
+    // @mara implements DES-LIFECYCLE
+    pub fn place(&self, file: &IssueFile) -> Result<IssueFile> {
+        let Some(issue) = &file.issue else {
+            return Ok(file.clone());
+        };
+        let Some(target) = self.destination(file, issue.status.is_closed())? else {
+            return Ok(file.clone());
+        };
+        if let Some(dir) = target.parent() {
+            fs::create_dir_all(dir).map_err(|error| Error::io(dir, &error))?;
+        }
+        if let Err(error) = fs::rename(&file.path, &target) {
+            if error.kind() == io::ErrorKind::NotFound && !file.path.exists() {
+                return Err(Error::new(
+                    ErrorCode::Conflict,
+                    format!(
+                        "{} was moved or deleted since it was read; show the issue again and retry",
+                        file.path.display()
+                    ),
+                ));
+            }
+            return Err(Error::io(&target, &error));
+        }
+        Ok(IssueFile {
+            path: target,
+            archived: !file.archived,
+            ..file.clone()
+        })
+    }
+
+    /// The path `file` moves to so that it is archived exactly when `closed`,
+    /// or `None` when it is in that directory already. Fails with
+    /// `ambiguous_id` when the path is taken.
+    pub(crate) fn destination(&self, file: &IssueFile, closed: bool) -> Result<Option<PathBuf>> {
+        if closed == file.archived {
+            return Ok(None);
+        }
+        let dir = if closed {
+            self.archive_dir()
+        } else {
+            self.dir()
+        };
+        let target = dir.join(file.path.file_name().unwrap_or_default());
+        if fs::symlink_metadata(&target).is_ok() {
+            return Err(Error::new(
+                ErrorCode::AmbiguousId,
+                format!(
+                    "{} cannot move to {}, which already exists; keep one of the two files",
+                    file.path.display(),
+                    target.display()
+                ),
+            ));
+        }
+        Ok(Some(target))
     }
 
     /// Renders an issue for writing, after checking that it is valid and
