@@ -70,7 +70,7 @@ Setting `done` with an unchecked task item fails and changes nothing. With force
 :methods: test
 :verifies: REQ-HANDOFF
 
-Through the real binary: `update --handoff` adds a timestamped `## Handoff` section to a body without one, and a second update replaces it in place while every byte outside the section stays unchanged. Text read from standard input works. `--no-handoff` removes the section. Text containing a level 2 heading is rejected, a `## Handoff` heading inside a fenced code block is ignored, and a body with two handoff sections makes both options fail without writing. `show` returns the text and time, a heading without a timestamp gives `written_at: null`, and `list` reports `handoff_at`. Closing an issue leaves its handoff untouched, and `zban prime` and the MCP instructions contain no handoff text.
+Through the real binary: `update --handoff` adds a timestamped `## Handoff` section to a body without one, and a second update replaces it in place while every byte outside the section stays unchanged. Text read from standard input works. `--no-handoff` removes the section. Text containing a level 2 heading is rejected, a `## Handoff` heading inside a fenced code block is ignored, a body with two handoff sections makes both options fail without writing, and so does `--handoff` on a body that leaves a fenced code block open. `show` returns the text and time, a heading without a timestamp gives `written_at: null`, and `list` reports `handoff_at`. Closing an issue leaves its handoff untouched, and `zban prime` and the MCP instructions contain no handoff text.
 :::
 
 :::mara verification VER-CHECK
