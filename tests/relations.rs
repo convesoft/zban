@@ -7,6 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use common::{temp_dir, write_files};
+use tempfile::TempDir;
 use zban::operations::{self, ListRequest};
 use zban::{ErrorCode, Graph, Id, Issue, IssueFile, IssueRef, Project, Status, Timestamp};
 
@@ -44,8 +45,9 @@ fn issue(title: &str, status: &str, kind: &str, relations: &str, second: u32) ->
     )
 }
 
-fn fixture(name: &str) -> Project {
-    let root = temp_dir(name);
+fn fixture() -> (TempDir, Project) {
+    let dir = temp_dir();
+    let root = dir.path();
     let open = |id: &str| format!(".zban/{id}.md");
     let files = [
         (open(A), issue("A", "todo", "task", "", 1)),
@@ -134,13 +136,14 @@ fn fixture(name: &str) -> Project {
             "---\n<<<<<<< HEAD\ntitle: Ours\n=======\ntitle: Theirs\n>>>>>>> branch\nstatus: todo\ntype: task\ncreated_at: 2026-01-01T00:00:20Z\n---\n".to_owned(),
         ),
     ];
-    write_files(&root, &[(".zban/config.toml", CONFIG)]);
+    write_files(root, &[(".zban/config.toml", CONFIG)]);
     let files: Vec<_> = files
         .iter()
         .map(|(path, text)| (path.as_str(), text.as_str()))
         .collect();
-    write_files(&root, &files);
-    Project::open(&root).unwrap()
+    write_files(root, &files);
+    let project = Project::open(root).unwrap();
+    (dir, project)
 }
 
 fn id(value: &str) -> Id {
@@ -252,7 +255,7 @@ fn snapshot(project: &Project) -> Vec<(String, Vec<u8>)> {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn ready_list_is_ordered_by_priority_age_and_id() {
-    let project = fixture("ready-order");
+    let (_dir, project) = fixture();
     // R is critical, C high; A, E1, T and S normal by age; M and N low and
     // the same age, so by ID. E1's parent is an epic and T's a draft, which
     // hold nothing back. S's parent is unreadable, which ends its chain.
@@ -262,7 +265,7 @@ fn ready_list_is_ordered_by_priority_age_and_id() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn each_issue_that_is_not_ready_reports_every_reason() {
-    let project = fixture("ready-reasons");
+    let (_dir, project) = fixture();
     let expected: BTreeMap<String, Vec<String>> = [
         (B, vec![format!("blocked_by:{A}")]),
         (D, vec![format!("ancestor_blocked:{B}")]),
@@ -299,7 +302,7 @@ fn each_issue_that_is_not_ready_reports_every_reason() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn closing_blockers_makes_dependents_ready() {
-    let project = fixture("ready-after-close");
+    let (_dir, project) = fixture();
     close(&project, A);
     // B is no longer blocked, and neither is its child D.
     assert_eq!(ready(&project), [R, C, B, D, E1, T, S, M, N]);
@@ -316,7 +319,7 @@ fn closing_blockers_makes_dependents_ready() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn show_lists_reverse_relations() {
-    let project = fixture("reverse");
+    let (_dir, project) = fixture();
     let files = project.load().unwrap();
     let graph = Graph::new(&files);
 
@@ -340,7 +343,7 @@ fn show_lists_reverse_relations() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn related_links_are_stored_once() {
-    let project = fixture("related");
+    let (_dir, project) = fixture();
     let before = snapshot(&project);
 
     // C stores `related: A`. Adding the link from A's side changes nothing,
@@ -394,7 +397,7 @@ fn related_links_are_stored_once() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn unknown_and_self_references_fail_with_invalid_reference() {
-    let project = fixture("invalid-reference");
+    let (_dir, project) = fixture();
     let unknown = id(UNKNOWN);
     // Each relation key, naming an unknown issue and then C itself.
     for key in ["parent", "blocked_by", "related", "discovered_from"] {
@@ -444,7 +447,7 @@ fn unknown_and_self_references_fail_with_invalid_reference() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn cycles_and_blockers_on_ancestors_fail_with_cycle() {
-    let project = fixture("cycle");
+    let (_dir, project) = fixture();
     let cycle = |value: &str, change: &dyn Fn(&mut Issue)| {
         let error = check_update(&project, value, change).unwrap_err();
         assert_eq!(error.code, ErrorCode::Cycle, "{value}: {error}");
@@ -503,9 +506,10 @@ fn cycles_and_blockers_on_ancestors_fail_with_cycle() {
 #[test]
 fn existing_cycles_do_not_block_unrelated_changes() {
     // A cycle that arrived with a merge, which only `zban check` reports.
-    let root = temp_dir("existing-cycle");
+    let dir = temp_dir();
+    let root = dir.path();
     write_files(
-        &root,
+        root,
         &[
             (".zban/config.toml", CONFIG),
             (
@@ -519,7 +523,7 @@ fn existing_cycles_do_not_block_unrelated_changes() {
             (&format!(".zban/{C}.md"), &issue("C", "todo", "task", "", 3)),
         ],
     );
-    let project = Project::open(&root).unwrap();
+    let project = Project::open(root).unwrap();
     check_update(&project, A, |issue| issue.title = "Renamed".into()).unwrap();
     check_update(&project, A, |issue| issue.blocked_by.push(id(C))).unwrap();
     // Readiness still terminates: B's ancestor chain loops back to B.
@@ -535,7 +539,7 @@ fn existing_cycles_do_not_block_unrelated_changes() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn deleting_a_referenced_issue_is_refused() {
-    let project = fixture("delete");
+    let (_dir, project) = fixture();
     let before = snapshot(&project);
     let delete = |value: &str| operations::delete(&project, value);
     // B blocks on A, C stores a related link to A, and R was discovered from A.
@@ -562,7 +566,7 @@ fn deleting_a_referenced_issue_is_refused() {
 // @mara implements VER-RELATIONS-READY
 #[test]
 fn an_id_with_two_files_is_ambiguous() {
-    let project = fixture("ambiguous");
+    let (_dir, project) = fixture();
     let open = fs::read(project.dir().join(format!("{M}.md"))).unwrap();
     fs::write(project.archive_dir().join(format!("{M}.md")), open).unwrap();
     let files = project.load().unwrap();

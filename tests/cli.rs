@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use common::{
-    racing_updates, snapshot, stderr, stdout, temp_dir, temp_dir_outside_projects, write_files,
-    zban, zban_with_input,
+    racing_updates, snapshot, stderr, stdout, temp_dir, write_files, zban, zban_with_input,
 };
 use serde_json::Value;
+use tempfile::TempDir;
 use zban::ErrorCode;
 
 const CONFIG: &str = "format_version = 1\nprefix = \"zb\"\n";
@@ -74,14 +74,16 @@ fn issue(title: &str, status: &str, kind: &str, header: &str, second: u32, body:
     )
 }
 
-/// A project holding `files`, given by path relative to the project root.
-fn project(name: &str, files: &[(String, String)]) -> PathBuf {
-    let root = temp_dir(&format!("cli-{name}"));
+/// A project holding `files`, given by path relative to the project root, in
+/// a directory that lasts as long as the returned [`TempDir`], and its root.
+fn project(files: &[(String, String)]) -> (TempDir, PathBuf) {
+    let dir = temp_dir();
+    let root = dir.path().to_owned();
     write_files(&root, &[(".zban/config.toml", CONFIG)]);
     for (path, content) in files {
         write_files(&root, &[(path.as_str(), content.as_str())]);
     }
-    root
+    (dir, root)
 }
 
 fn open(id: &str) -> String {
@@ -92,72 +94,69 @@ fn archived(id: &str) -> String {
     format!(".zban/archive/{id}.md")
 }
 
-fn fixture(name: &str) -> PathBuf {
-    project(
-        name,
-        &[
-            (open(E), issue("Storage epic", "todo", "epic", "", 1, "")),
-            (
-                open(A),
-                issue(
-                    "Parse files",
-                    "todo",
-                    "task",
-                    &format!("priority: high\ntags:\n  - storage\nparent: {E}\n"),
-                    2,
-                    "Read the FRONTMATTER.\n\n- [x] one\n- [ ] two\n",
-                ),
+fn fixture() -> (TempDir, PathBuf) {
+    project(&[
+        (open(E), issue("Storage epic", "todo", "epic", "", 1, "")),
+        (
+            open(A),
+            issue(
+                "Parse files",
+                "todo",
+                "task",
+                &format!("priority: high\ntags:\n  - storage\nparent: {E}\n"),
+                2,
+                "Read the FRONTMATTER.\n\n- [x] one\n- [ ] two\n",
             ),
-            (
-                open(B),
-                issue(
-                    "Crash on empty title",
-                    "in-progress",
-                    "bug",
-                    &format!("priority: critical\ntags:\n  - storage\n  - cli\nparent: {E}\n"),
-                    3,
-                    "",
-                ),
+        ),
+        (
+            open(B),
+            issue(
+                "Crash on empty title",
+                "in-progress",
+                "bug",
+                &format!("priority: critical\ntags:\n  - storage\n  - cli\nparent: {E}\n"),
+                3,
+                "",
             ),
-            (
-                open(C),
-                issue("Search Me", "draft", "feature", "priority: low\n", 4, ""),
+        ),
+        (
+            open(C),
+            issue("Search Me", "draft", "feature", "priority: low\n", 4, ""),
+        ),
+        (
+            open(D),
+            issue(
+                "Write files",
+                "todo",
+                "task",
+                &format!("parent: {A}\nblocked_by:\n  - {B}\n"),
+                5,
+                "",
             ),
-            (
-                open(D),
-                issue(
-                    "Write files",
-                    "todo",
-                    "task",
-                    &format!("parent: {A}\nblocked_by:\n  - {B}\n"),
-                    5,
-                    "",
-                ),
+        ),
+        (
+            archived(F),
+            issue(
+                "Old task",
+                "done",
+                "task",
+                &format!("tags:\n  - cli\nparent: {E}\n"),
+                6,
+                "",
             ),
-            (
-                archived(F),
-                issue(
-                    "Old task",
-                    "done",
-                    "task",
-                    &format!("tags:\n  - cli\nparent: {E}\n"),
-                    6,
-                    "",
-                ),
+        ),
+        (
+            archived(G),
+            issue(
+                "Dropped idea",
+                "cancelled",
+                "task",
+                "priority: high\n",
+                7,
+                "",
             ),
-            (
-                archived(G),
-                issue(
-                    "Dropped idea",
-                    "cancelled",
-                    "task",
-                    "priority: high\n",
-                    7,
-                    "",
-                ),
-            ),
-        ],
-    )
+        ),
+    ])
 }
 
 /// Runs zban with `--json` and returns the exit status and the one JSON
@@ -268,8 +267,8 @@ fn version_prints_the_package_version() {
 
 #[test]
 fn no_arguments_prints_help_as_invalid_usage() {
-    let dir = temp_dir("cli-no-arguments");
-    let output = zban(&dir, &[]);
+    let dir = temp_dir();
+    let output = zban(dir.path(), &[]);
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("Usage: zban"));
 }
@@ -277,28 +276,29 @@ fn no_arguments_prints_help_as_invalid_usage() {
 // @mara implements VER-CLI
 #[test]
 fn every_command_prints_one_json_document() {
-    let root = temp_dir("cli-json-documents");
+    let dir = temp_dir();
+    let root = dir.path();
     let issue_keys = sorted(&[ISSUE_KEYS]);
     let list_keys = sorted(&[ISSUE_KEYS, LIST_KEYS]);
     let detail_keys = sorted(&[ISSUE_KEYS, DETAIL_KEYS]);
 
-    let init = ok(&root, &["init"]);
+    let init = ok(root, &["init"]);
     assert_eq!(keys(&init), ["enclosing", "path", "prefix"]);
     assert_eq!(init["prefix"], "zb");
     assert_eq!(
         init["path"].as_str().unwrap(),
-        fs::canonicalize(&root)
+        fs::canonicalize(root)
             .unwrap()
             .join(".zban")
             .to_str()
             .unwrap()
     );
 
-    let parent = ok(&root, &["create", "Parent", "-t", "epic"]);
+    let parent = ok(root, &["create", "Parent", "-t", "epic"]);
     assert_eq!(keys(&parent), issue_keys);
     let parent_id = parent["id"].as_str().unwrap();
     let created = ok(
-        &root,
+        root,
         &[
             "create",
             "Child",
@@ -336,12 +336,12 @@ fn every_command_prints_one_json_document() {
     assert!(path.is_absolute() && path.is_file(), "{path:?}");
     assert_eq!(
         path,
-        fs::canonicalize(&root)
+        fs::canonicalize(root)
             .unwrap()
             .join(format!(".zban/{id}.md"))
     );
 
-    let listing = ok(&root, &["list"]);
+    let listing = ok(root, &["list"]);
     assert_eq!(keys(&listing), ["issues", "warnings"]);
     assert_eq!(listing["warnings"], serde_json::json!([]));
     for issue in listing["issues"].as_array().unwrap() {
@@ -355,7 +355,7 @@ fn every_command_prints_one_json_document() {
     assert_eq!(listing["issues"][1]["ready"], false);
 
     // `--json` also works after the command.
-    let output = zban(&root, &["show", id, parent_id, "--json"]);
+    let output = zban(root, &["show", id, parent_id, "--json"]);
     let (status, shown) = document(&["show"], &output);
     assert_eq!(status, 0);
     assert_eq!(keys(&shown), ["issues", "warnings"]);
@@ -367,14 +367,14 @@ fn every_command_prints_one_json_document() {
     assert_eq!(shown["issues"][0]["body"], "- [x] one\n- [ ] two\n");
     assert_eq!(shown["issues"][1]["children"], serde_json::json!([id]));
 
-    let updated = ok(&root, &["update", id, "-s", "in-progress"]);
+    let updated = ok(root, &["update", id, "-s", "in-progress"]);
     assert_eq!(keys(&updated), issue_keys);
     assert_eq!(updated["status"], "in-progress");
     assert_eq!(updated["not_ready"], serde_json::json!(["status"]));
 
     // Closing the parent leaves the child open under it: a warning, exit 0.
-    ok(&root, &["update", parent_id, "-s", "done", "--force"]);
-    let checked = ok(&root, &["check"]);
+    ok(root, &["update", parent_id, "-s", "done", "--force"]);
+    let checked = ok(root, &["check"]);
     assert_eq!(keys(&checked), ["findings"]);
     let findings = checked["findings"].as_array().unwrap();
     assert_eq!(findings.len(), 1, "{checked}");
@@ -384,7 +384,7 @@ fn every_command_prints_one_json_document() {
     assert_eq!(finding["code"], "open_under_closed");
     assert_eq!(finding["path"], created["path"]);
 
-    let deleted = ok(&root, &["delete", id]);
+    let deleted = ok(root, &["delete", id]);
     assert_eq!(keys(&deleted), issue_keys);
     assert_eq!(deleted["id"], id);
     assert!(!path.exists());
@@ -393,7 +393,7 @@ fn every_command_prints_one_json_document() {
 // @mara implements VER-CLI
 #[test]
 fn failures_print_an_error_object_and_exit_with_status_1() {
-    let root = fixture("cli-failures");
+    let (_dir, root) = fixture();
     let before = snapshot(&root.join(".zban"), &[]);
     assert_eq!(error_code(&root, &["show", "zb-000000"]), "not_found");
 
@@ -411,7 +411,7 @@ fn failures_print_an_error_object_and_exit_with_status_1() {
 // @mara implements VER-CLI
 #[test]
 fn invalid_usage_exits_with_status_2() {
-    let root = fixture("cli-usage");
+    let (_dir, root) = fixture();
     let before = snapshot(&root.join(".zban"), &[]);
     for args in [
         &["--no-such-option"][..],
@@ -460,7 +460,7 @@ fn invalid_usage_exits_with_status_2() {
 // @mara implements VER-CLI
 #[test]
 fn each_error_code_is_produced() {
-    let root = fixture("cli-error-codes");
+    let (_dir, root) = fixture();
     write_files(
         &root,
         &[
@@ -482,12 +482,12 @@ fn each_error_code_is_produced() {
             ),
         ],
     );
-    let bad_config = project("cli-error-codes-config", &[]);
+    let (_dir, bad_config) = project(&[]);
     write_files(
         &bad_config,
         &[(".zban/config.toml", "format_version = 2\n")],
     );
-    let outside = temp_dir_outside_projects("error-codes");
+    let outside = temp_dir();
     let before = snapshot(&root.join(".zban"), &[]);
 
     let cases: &[(&str, &Path, &[&str])] = &[
@@ -496,7 +496,7 @@ fn each_error_code_is_produced() {
             &root,
             &["update", A, "--add-tag", "x", "--remove-tag", "x"],
         ),
-        ("project_not_found", &outside, &["list"]),
+        ("project_not_found", outside.path(), &["list"]),
         ("project_exists", &root, &["init"]),
         ("invalid_config", &bad_config, &["list"]),
         ("not_found", &root, &["show", "zb-000000"]),
@@ -569,7 +569,7 @@ fn each_error_code_is_produced() {
     }
     assert_eq!(snapshot(&root.join(".zban"), &[]), before);
 
-    let raced = fixture("cli-error-codes-conflict");
+    let (_dir, raced) = fixture();
     let args = ["--json", "update", A, "--append", "-"];
     let raced_codes: Vec<_> = racing_updates(&raced, A)
         .into_iter()
@@ -584,13 +584,12 @@ fn each_error_code_is_produced() {
     for code in ErrorCode::ALL {
         assert!(produced.contains(&code.as_str()), "no case produces {code}");
     }
-    fs::remove_dir_all(outside).unwrap();
 }
 
 // @mara implements VER-CLI
 #[test]
 fn list_filters_select_issues_in_listing_order() {
-    let root = fixture("cli-list-filters");
+    let (_dir, root) = fixture();
     for (args, expected) in [
         (&[][..], &[B, A, E, D, C][..]),
         (&["--all"], &[B, A, G, E, D, F, C]),
@@ -648,7 +647,7 @@ fn list_filters_select_issues_in_listing_order() {
 // @mara implements VER-CLI
 #[test]
 fn list_short_options_select_what_the_long_options_select() {
-    let root = fixture("cli-list-short-options");
+    let (_dir, root) = fixture();
     for (short, long, expected) in [
         (
             &["-s", "todo"][..],
@@ -687,7 +686,7 @@ fn list_short_options_select_what_the_long_options_select() {
 // @mara implements VER-CLI
 #[test]
 fn list_parent_fails_on_an_issue_show_cannot_find() {
-    let root = fixture("cli-list-parent");
+    let (_dir, root) = fixture();
     write_files(
         &root,
         &[
@@ -723,7 +722,7 @@ fn list_parent_fails_on_an_issue_show_cannot_find() {
 // @mara implements VER-CLI
 #[test]
 fn commands_outside_a_project_fail_with_project_not_found() {
-    let dir = temp_dir_outside_projects("cli-outside");
+    let dir = temp_dir();
     for args in [
         &["list"][..],
         &["show", A],
@@ -731,59 +730,61 @@ fn commands_outside_a_project_fail_with_project_not_found() {
         &["update", A, "-s", "done"],
         &["delete", A],
     ] {
-        assert_eq!(error_code(&dir, args), "project_not_found", "{args:?}");
-        let output = zban(&dir, args);
+        assert_eq!(
+            error_code(dir.path(), args),
+            "project_not_found",
+            "{args:?}"
+        );
+        let output = zban(dir.path(), args);
         assert!(stderr(&output).contains("[project_not_found]"), "{args:?}");
     }
-    assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
-    fs::remove_dir_all(dir).unwrap();
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
 }
 
 // @mara implements VER-CLI
 #[test]
 fn directory_option_behaves_like_starting_there() {
-    let root = fixture("cli-directory");
+    let (_dir, root) = fixture();
     fs::create_dir_all(root.join("src/deep")).unwrap();
-    let outside = temp_dir_outside_projects("cli-directory");
+    let outside = temp_dir();
     let expected = ok(&root, &["list", "--all"]);
     for dir in [root.clone(), root.join("src/deep")] {
         let dir = dir.to_str().unwrap();
-        assert_eq!(ok(&outside, &["-C", dir, "list", "--all"]), expected);
+        assert_eq!(ok(outside.path(), &["-C", dir, "list", "--all"]), expected);
         assert_eq!(
-            ok(&outside, &["list", "--all", "--directory", dir]),
+            ok(outside.path(), &["list", "--all", "--directory", dir]),
             expected
         );
         assert_eq!(ok(&root.join("src"), &["list", "--all"]), expected);
     }
     let deep = root.join("src/deep");
     let created = ok(
-        &outside,
+        outside.path(),
         &["-C", deep.to_str().unwrap(), "create", "From deep"],
     );
     let id = created["id"].as_str().unwrap();
     assert!(root.join(open(id)).is_file());
     assert!(!deep.join(".zban").exists());
-    assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
-    fs::remove_dir_all(outside).unwrap();
+    assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
 }
 
 // @mara implements VER-CLI
 #[test]
 fn init_names_the_enclosing_project() {
-    let outer = temp_dir_outside_projects("cli-init-enclosing");
-    let outer_dir = fs::canonicalize(&outer).unwrap().join(".zban");
+    let dir = temp_dir();
+    let outer = dir.path();
+    let outer_dir = fs::canonicalize(outer).unwrap().join(".zban");
     let middle = outer.join("middle");
     let inner = middle.join("src/inner");
     fs::create_dir_all(&inner).unwrap();
 
-    let created = ok(&outer, &["init"]);
+    let created = ok(outer, &["init"]);
     assert_eq!(created["enclosing"], Value::Null);
-    let separate = temp_dir_outside_projects("cli-init-enclosing-human");
-    let output = zban(&separate, &["init"]);
+    let separate = temp_dir();
+    let output = zban(separate.path(), &["init"]);
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(stdout(&output).lines().count(), 1, "{}", stdout(&output));
     assert!(!stdout(&output).contains("note:"));
-    fs::remove_dir_all(separate).unwrap();
 
     // The note names the enclosing project's `.zban/` and says that the
     // nested project hides it.
@@ -802,7 +803,7 @@ fn init_names_the_enclosing_project() {
     // `enclosing` is the nearest project above, not the outermost one.
     ok(&middle, &["create", "In the middle project"]);
     let middle_dir = fs::canonicalize(&middle).unwrap().join(".zban");
-    let created = ok(&outer, &["-C", inner.to_str().unwrap(), "init"]);
+    let created = ok(outer, &["-C", inner.to_str().unwrap(), "init"]);
     assert_eq!(created["enclosing"], middle_dir.to_str().unwrap());
     assert_eq!(
         created["path"],
@@ -816,13 +817,12 @@ fn init_names_the_enclosing_project() {
     let count = |dir: &Path| ok(dir, &["list"])["issues"].as_array().unwrap().len();
     assert_eq!(count(&middle.join("src")), 1);
     assert_eq!(count(&inner), 0);
-    fs::remove_dir_all(outer).unwrap();
 }
 
 // @mara implements VER-CLI
 #[test]
 fn failed_replacements_write_nothing() {
-    let root = fixture("cli-replacements");
+    let (_dir, root) = fixture();
     let before = read(&root, &open(A));
     for (old, code) in [("nowhere", "text_not_found"), ("- [", "text_ambiguous")] {
         let args = [
@@ -870,17 +870,14 @@ fn failed_replacements_write_nothing() {
 // @mara implements VER-CLI
 #[test]
 fn append_joins_after_exactly_one_blank_line() {
-    let root = project(
-        "cli-append",
-        &[
-            (
-                open(A),
-                issue("Trailing", "todo", "task", "", 1, "Intro\n\n\n"),
-            ),
-            (open(B), issue("No newline", "todo", "task", "", 2, "Intro")),
-            (open(C), issue("Empty", "todo", "task", "", 3, "")),
-        ],
-    );
+    let (_dir, root) = project(&[
+        (
+            open(A),
+            issue("Trailing", "todo", "task", "", 1, "Intro\n\n\n"),
+        ),
+        (open(B), issue("No newline", "todo", "task", "", 2, "Intro")),
+        (open(C), issue("Empty", "todo", "task", "", 3, "")),
+    ]);
     for id in [A, B] {
         ok(&root, &["update", id, "--append", "## Notes\n\nMore."]);
         assert_eq!(
@@ -898,7 +895,7 @@ fn append_joins_after_exactly_one_blank_line() {
 // @mara implements VER-CLI
 #[test]
 fn an_update_is_all_or_nothing() {
-    let root = fixture("cli-all-or-nothing");
+    let (_dir, root) = fixture();
     // A's only child moves away, so that A can close.
     ok(&root, &["update", D, "--no-parent"]);
     let path = open(A);
@@ -984,7 +981,7 @@ fn an_update_is_all_or_nothing() {
 // @mara implements VER-CLI
 #[test]
 fn body_text_can_come_from_standard_input() {
-    let root = fixture("cli-stdin");
+    let (_dir, root) = fixture();
     let (status, created) = run_json_with(
         &root,
         &["create", "From stdin", "--body", "-"],
@@ -1017,7 +1014,7 @@ fn body_text_can_come_from_standard_input() {
 // @mara implements VER-CLI
 #[test]
 fn relations_change_through_update() {
-    let root = fixture("cli-relations");
+    let (_dir, root) = fixture();
     let updated = ok(
         &root,
         &[
@@ -1064,8 +1061,7 @@ fn relations_change_through_update() {
 // @mara implements VER-CLI
 #[test]
 fn an_update_that_changes_nothing_leaves_the_file_alone() {
-    let root = project(
-        "cli-unchanged",
+    let (_dir, root) = project(
         &[(
             open(A),
             "---\n# hand-written\ntitle: 'Quoted'\nstatus: todo\ntype: task\ncreated_at: 2026-01-01T00:00:01Z\n---\n"
@@ -1084,7 +1080,7 @@ fn an_update_that_changes_nothing_leaves_the_file_alone() {
 // @mara implements VER-CLI
 #[test]
 fn create_reopen_and_delete_place_files_by_status() {
-    let root = fixture("cli-create-closed");
+    let (_dir, root) = fixture();
     let created = ok(&root, &["create", "Already done", "-s", "done"]);
     let id = created["id"].as_str().unwrap();
     assert!(created["closed_at"].is_string());
@@ -1104,8 +1100,7 @@ fn create_reopen_and_delete_place_files_by_status() {
 // @mara implements VER-CLI
 #[test]
 fn broken_files_do_not_stop_work_on_other_issues() {
-    let root = project(
-        "cli-damaged",
+    let (_dir, root) = project(
         &[
             (
                 open("zb-cccccc"),
@@ -1196,7 +1191,7 @@ fn broken_files_do_not_stop_work_on_other_issues() {
 
 #[test]
 fn human_output_is_text() {
-    let root = fixture("cli-human");
+    let (_dir, root) = fixture();
     let output = zban(&root, &["list"]);
     assert!(output.status.success());
     let text = stdout(&output);
