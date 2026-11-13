@@ -86,17 +86,6 @@ user before implementing it.
 - Link implementing code with comment markers on the declaration, for example
   `// @mara implements DES-READINESS` (see `.mara/README.md`).
 
-## Documentation layout
-
-Each topic page in `docs/` serves users and engineering at once. It opens with
-user-facing guidance (examples and tables) and then has `## Requirements`,
-`## Design` and, where useful, `## Scenario` sections holding the Mara items. The
-guidance explains and the items are normative; keep them consistent and avoid
-restating item text at length. Goals, needs and terms belong in `product.mara.md`,
-decisions and risks in `decisions.mara.md`, and checks in `verification.mara.md`.
-Add a page only for a new user-visible topic, and list it in `docs/index.mara.md`.
-Remove a page's "not implemented yet" note once the feature works.
-
 ## Rust
 
 - Keep the core library and thin CLI/MCP adapters split described in `DES-SHARED-CORE`.
