@@ -22,6 +22,7 @@ const E: &str = "zb-eeeeee"; // epic
 const E1: &str = "zb-eeeee1"; // child of the epic E
 const F: &str = "zb-ffffff"; // draft
 const T: &str = "zb-tttttt"; // todo child of the draft F
+const T1: &str = "zb-ttttt1"; // todo child of T, below the draft F
 const G: &str = "zb-gggggg"; // task under epic H
 const H: &str = "zb-hhhhhh"; // epic inside epic K
 const K: &str = "zb-kkkkkk"; // epic blocked by the open epic J
@@ -30,6 +31,7 @@ const R: &str = "zb-rrrrrr"; // critical, discovered from A
 const M: &str = "zb-mmmmmm"; // low, same age as N
 const N: &str = "zb-nnnnnn"; // low, same age as M
 const W: &str = "zb-wwwwww"; // in progress
+const X: &str = "zb-xxxxxx"; // todo child of the in-progress W
 const Z: &str = "zb-zzzzzz"; // done, archived
 const Q: &str = "zb-qqqqqq"; // child of the closed Z
 const Y: &str = "zb-yyyyyy"; // unreadable file
@@ -127,6 +129,14 @@ fn fixture() -> (TempDir, Project) {
             ),
         ),
         (open(W), issue("W", "in-progress", "task", "", 18)),
+        (
+            open(T1),
+            issue("T1", "todo", "task", &format!("parent: {T}\n"), 21),
+        ),
+        (
+            open(X),
+            issue("X", "todo", "task", &format!("parent: {W}\n"), 22),
+        ),
         (
             format!(".zban/archive/{Z}.md"),
             "---\ntitle: Z\nstatus: done\ntype: feature\ncreated_at: 2026-01-01T00:00:19Z\nclosed_at: 2026-01-02T00:00:00Z\n---\n".to_owned(),
@@ -256,10 +266,11 @@ fn snapshot(project: &Project) -> Vec<(String, Vec<u8>)> {
 #[test]
 fn ready_list_is_ordered_by_priority_age_and_id() {
     let (_dir, project) = fixture();
-    // R is critical, C high; A, E1, T and S normal by age; M and N low and
-    // the same age, so by ID. E1's parent is an epic and T's a draft, which
-    // hold nothing back. S's parent is unreadable, which ends its chain.
-    assert_eq!(ready(&project), [R, C, A, E1, T, S, M, N]);
+    // R is critical, C high; A, E1, S and X normal by age; M and N low and
+    // the same age, so by ID. E1's parent is an epic and X's is in progress,
+    // which hold nothing back. S's parent is unreadable, which ends its
+    // chain.
+    assert_eq!(ready(&project), [R, C, A, E1, S, X, M, N]);
 }
 
 // @mara implements VER-RELATIONS-READY
@@ -277,6 +288,8 @@ fn each_issue_that_is_not_ready_reports_every_reason() {
         (K, vec!["epic".to_owned(), format!("blocked_by:{J}")]),
         (P, vec![format!("blocked_by:{UNKNOWN}")]),
         (Q, vec![format!("ancestor_closed:{Z}")]),
+        (T, vec![format!("ancestor_draft:{F}")]),
+        (T1, vec![format!("ancestor_draft:{F}")]),
         (V, vec![format!("blocked_by:{Y}")]),
         (W, vec!["status".to_owned()]),
         (Z, vec!["status".to_owned()]),
@@ -305,15 +318,51 @@ fn closing_blockers_makes_dependents_ready() {
     let (_dir, project) = fixture();
     close(&project, A);
     // B is no longer blocked, and neither is its child D.
-    assert_eq!(ready(&project), [R, C, B, D, E1, T, S, M, N]);
+    assert_eq!(ready(&project), [R, C, B, D, E1, S, X, M, N]);
     assert!(!reasons(&project).contains_key(B));
 
     close(&project, J);
     // K is no longer blocked, so G, two levels below it, becomes ready.
     // The epics H and K stay out of the list.
-    assert_eq!(ready(&project), [R, C, B, D, E1, G, T, S, M, N]);
+    assert_eq!(ready(&project), [R, C, B, D, E1, G, S, X, M, N]);
     assert_eq!(reasons(&project)[H], ["epic"]);
     assert_eq!(reasons(&project)[K], ["epic"]);
+}
+
+// @mara implements VER-RELATIONS-READY
+#[test]
+fn a_draft_ancestor_holds_back_every_descendant() {
+    let (_dir, project) = fixture();
+    // A draft that is also blocked reports both, and so does a draft below
+    // another draft, nearest ancestor first.
+    update(&project, T, |issue| {
+        issue.status = Status::Draft;
+        issue.blocked_by.push(id(A));
+    });
+    let reasons = reasons(&project);
+    assert_eq!(
+        reasons[T],
+        [
+            "status".to_owned(),
+            format!("blocked_by:{A}"),
+            format!("ancestor_draft:{F}")
+        ]
+    );
+    assert_eq!(
+        reasons[T1],
+        [
+            format!("ancestor_blocked:{T}"),
+            format!("ancestor_draft:{T}"),
+            format!("ancestor_draft:{F}")
+        ]
+    );
+
+    // Once F and T are `todo` and A is closed, F, T and T1 are ready. F is a
+    // feature, so it is ready itself.
+    update(&project, F, |issue| issue.status = Status::Todo);
+    update(&project, T, |issue| issue.status = Status::Todo);
+    close(&project, A);
+    assert_eq!(ready(&project), [R, C, B, D, E1, F, T, S, T1, X, M, N]);
 }
 
 // @mara implements VER-RELATIONS-READY
