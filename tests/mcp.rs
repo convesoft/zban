@@ -601,6 +601,52 @@ fn invalid_arguments_give_the_same_error_codes() {
     assert_eq!(files(&s.mcp), before);
 }
 
+/// A well-formed ID that names no issue fails with `not_found` and the same
+/// message on both surfaces, hinting at another branch or worktree; a value
+/// that cannot be an ID gets its own explanation instead.
+// @mara implements VER-SURFACE-PARITY
+#[test]
+fn an_unknown_id_hints_at_another_branch_or_worktree_on_both_surfaces() {
+    let mut s = Surfaces::new();
+    let hinted = |document: &Value| {
+        assert_eq!(document["error"]["code"], "not_found", "{document}");
+        let message = document["error"]["message"].as_str().unwrap();
+        message.contains("another branch or worktree")
+    };
+    let unknown: &[(&[&str], &str, Value)] = &[
+        (
+            &["show", "zb-zzzzzz"],
+            "show_issues",
+            json!({"ids": ["zb-zzzzzz"]}),
+        ),
+        (
+            &["update", "zb-zzzzzz", "-s", "todo"],
+            "update_issue",
+            json!({"id": "zb-zzzzzz", "status": "todo"}),
+        ),
+        (
+            &["delete", "zb-zzzzzz"],
+            "delete_issue",
+            json!({"id": "zb-zzzzzz"}),
+        ),
+        (
+            &["list", "--parent", "zb-zzzzzz"],
+            "list_issues",
+            json!({"parent": "zb-zzzzzz"}),
+        ),
+    ];
+    for (args, tool, arguments) in unknown {
+        let (_, document) = s.both(args, tool, arguments.clone());
+        assert!(hinted(&document), "{args:?}: {document}");
+    }
+    let (_, document) = s.both(
+        &["show", "nonsense"],
+        "show_issues",
+        json!({"ids": ["nonsense"]}),
+    );
+    assert!(!hinted(&document), "{document}");
+}
+
 /// Replacement texts that do not pair up, and a value both set and removed,
 /// fail with `usage` in words that name each surface's parameters.
 // @mara implements VER-SURFACE-PARITY
