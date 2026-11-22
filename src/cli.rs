@@ -110,6 +110,10 @@ struct ListArgs {
     priorities: Vec<String>,
     #[arg(long = "tag", value_name = "T")]
     tags: Vec<String>,
+    /// Leave out issues carrying this tag, even when they match `--tag`.
+    // @mara implements DES-CLI
+    #[arg(long = "not-tag", value_name = "T")]
+    not_tags: Vec<String>,
     /// Direct children of this issue.
     #[arg(long, value_name = "ID")]
     parent: Option<String>,
@@ -281,6 +285,7 @@ impl ListArgs {
             types: self.types,
             priorities: self.priorities,
             tags: self.tags,
+            not_tags: self.not_tags,
             parent: self.parent,
             ready: self.ready,
             search: self.search,

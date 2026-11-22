@@ -437,6 +437,82 @@ fn a_draft_ancestor_holds_back_its_descendants_on_both_surfaces() {
     assert_eq!(counts(1), json!({"closed": 1, "total": 1}));
 }
 
+/// `not_tags` leaves out the issues that `list --not-tag` leaves out, alone,
+/// repeated and combined with `tags` and `ready`, and refuses an invalid tag
+/// as the command line does. Every listing below differs from the same
+/// listing without `not_tags`.
+// @mara implements VER-SURFACE-PARITY
+#[test]
+fn not_tags_leaves_out_what_not_tag_leaves_out() {
+    let mut s = Surfaces::new();
+    // Distinct priorities order the new issues alike in both projects, whose
+    // IDs differ.
+    for (title, priority, tags) in [
+        ("Maintainer chore", "critical", &["maintainer"][..]),
+        ("Slow storage test", "high", &["slow", "storage"]),
+        ("Storage fix", "normal", &["storage"]),
+        ("Storage release", "deferred", &["storage", "maintainer"]),
+    ] {
+        let mut args = vec!["create", title, "-p", priority];
+        for tag in tags {
+            args.extend(["--tag", tag]);
+        }
+        s.both(
+            &args,
+            "create_issue",
+            json!({"title": title, "priority": priority, "tags": tags}),
+        );
+    }
+    let [chore, slow, fix, release] = [0, 1, 2, 3].map(|n| s.created(n));
+    let [chore, slow, fix, release] = [&chore, &slow, &fix, &release].map(String::as_str);
+    let (_, all) = s.both(&["list"], "list_issues", json!({}));
+    assert_eq!(ids(&all), [chore, slow, B, E, fix, A, release]);
+
+    let (_, listed) = s.both(
+        &["list", "--not-tag", "maintainer"],
+        "list_issues",
+        json!({"not_tags": ["maintainer"]}),
+    );
+    assert_eq!(ids(&listed), [slow, B, E, fix, A]);
+    let (_, listed) = s.both(
+        &["list", "--not-tag", "maintainer", "--not-tag", "slow"],
+        "list_issues",
+        json!({"not_tags": ["maintainer", "slow"]}),
+    );
+    assert_eq!(ids(&listed), [B, E, fix, A]);
+    // `release` carries both the wanted and an excluded tag.
+    let (_, listed) = s.both(
+        &["list", "--tag", "storage", "--not-tag", "maintainer"],
+        "list_issues",
+        json!({"tags": ["storage"], "not_tags": ["maintainer"]}),
+    );
+    assert_eq!(ids(&listed), [slow, fix]);
+    let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
+    assert_eq!(ids(&ready), [chore, slow, fix, A, release]);
+    let (_, ready) = s.both(
+        &["list", "--ready", "--not-tag", "storage"],
+        "list_issues",
+        json!({"ready": true, "not_tags": ["storage"]}),
+    );
+    assert_eq!(ids(&ready), [chore, A]);
+
+    for (args, arguments) in [
+        (
+            &["list", "--not-tag", "Bad Tag"][..],
+            json!({"not_tags": ["Bad Tag"]}),
+        ),
+        (
+            &["list", "--not-tag", "slow", "--not-tag", ""],
+            json!({"not_tags": ["slow", ""]}),
+        ),
+        (&["list", "--tag", "Storage"], json!({"tags": ["Storage"]})),
+    ] {
+        let (status, document) = s.both(args, "list_issues", arguments);
+        assert_eq!(status, 1, "{args:?}");
+        assert_eq!(document["error"]["code"], "invalid_value", "{args:?}");
+    }
+}
+
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn invalid_arguments_give_the_same_error_codes() {
@@ -719,10 +795,11 @@ fn a_check_that_finds_errors_is_a_result() {
 }
 
 /// `create_issue` and `list_issues` name the repeatable `--tag` after the
-/// issue field, and refuse the old name `tag` like any unknown parameter.
+/// issue field, and `list_issues` names `--not-tag` to match, refusing the
+/// singular names `tag` and `not_tag` like any unknown parameter.
 // @mara implements VER-SURFACE-PARITY
 #[test]
-fn create_and_list_take_tags_and_refuse_tag() {
+fn create_and_list_take_tags_and_not_tags_and_refuse_the_singular() {
     let dir = temp_dir();
     let root = dir.path();
     fixture(root);
@@ -739,6 +816,7 @@ fn create_and_list_take_tags_and_refuse_tag() {
     for (tool, takes, refuses) in [
         ("create_issue", "tags", "tag"),
         ("list_issues", "tags", "tag"),
+        ("list_issues", "not_tags", "not_tag"),
         ("update_issue", "add_tag", "add_tags"),
         ("update_issue", "remove_tag", "remove_tags"),
     ] {
@@ -746,13 +824,22 @@ fn create_and_list_take_tags_and_refuse_tag() {
         assert_eq!(params[takes]["type"], "array", "{tool} {takes}");
         assert!(!params.contains_key(refuses), "{tool} {refuses}");
     }
-    for (tool, arguments) in [
-        ("create_issue", json!({"title": "Tagged", "tag": ["x"]})),
-        ("list_issues", json!({"tag": ["x"]})),
+    for (tool, name, arguments) in [
+        (
+            "create_issue",
+            "tag",
+            json!({"title": "Tagged", "tag": ["x"]}),
+        ),
+        ("list_issues", "tag", json!({"tag": ["x"]})),
+        ("list_issues", "not_tag", json!({"not_tag": ["x"]})),
     ] {
         let called = client.call(tool, arguments);
         assert_eq!(error_code(&called), "usage", "{tool}");
-        assert!(called.text.contains("`tag`"), "{}", called.text);
+        assert!(
+            called.text.contains(&format!("`{name}`")),
+            "{}",
+            called.text
+        );
     }
     assert_eq!(snapshot(root, &[]), before);
 }

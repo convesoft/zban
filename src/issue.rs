@@ -381,11 +381,7 @@ impl Issue {
                 "the title must be a non-empty single line",
             ));
         }
-        if let Some(tag) = self.tags.iter().find(|tag| !valid_tag(tag)) {
-            return Err(Error::invalid_value(format!(
-                "invalid tag {tag:?}: use lowercase letters, digits and single hyphens, starting with a letter"
-            )));
-        }
+        self.tags.iter().try_for_each(|tag| check_tag(tag))?;
         distinct("tags", &self.tags)?;
         distinct("blocked_by", &self.blocked_by)?;
         distinct("related", &self.related)?;
@@ -476,6 +472,19 @@ fn split(text: &str) -> Option<(&str, &str)> {
 
 fn valid_title(title: &str) -> bool {
     !title.is_empty() && !title.contains(['\n', '\r'])
+}
+
+/// Fails with `invalid_value` for a value that is not a tag
+/// (`DES-ISSUE-FILE`).
+// @mara implements DES-ISSUE-FILE
+pub fn check_tag(tag: &str) -> Result<()> {
+    if valid_tag(tag) {
+        Ok(())
+    } else {
+        Err(Error::invalid_value(format!(
+            "invalid tag {tag:?}: use lowercase letters, digits and single hyphens, starting with a letter"
+        )))
+    }
 }
 
 fn valid_tag(tag: &str) -> bool {

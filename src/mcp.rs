@@ -220,6 +220,7 @@ impl Server {
             types: args.issue_type,
             priorities: args.priority,
             tags: args.tags,
+            not_tags: args.not_tags,
             parent: args.parent,
             ready: args.ready,
             search: args.search,
@@ -297,7 +298,8 @@ impl Server {
 
 // The argument types. Each mirrors the options of its command, with list
 // values for repeatable options and `true` for flags (`REQ-MCP-STDIO`), except
-// that `--tag` is `tags`, like the issue field (`DES-MCP-TOOLS`). Every tool
+// that `--tag` is `tags`, like the issue field, and `--not-tag` is `not_tags`
+// to match (`DES-MCP-TOOLS`). Every tool
 // also takes `directory`.
 
 /// Repeated values of one filter match any of them; different filters must
@@ -321,6 +323,11 @@ struct ListArgs {
     priority: Vec<String>,
     #[serde(default)]
     tags: Vec<String>,
+    /// Leaves out issues carrying any of these tags, even when they match
+    /// `tags`.
+    // @mara implements DES-MCP-TOOLS
+    #[serde(default)]
+    not_tags: Vec<String>,
     /// Direct children of this issue.
     parent: Option<String>,
     /// Issues that can be started now.

@@ -46,13 +46,15 @@ args = ["mcp"]
 The tools mirror the [commands](cli.mara.md): `list_issues`, `show_issues`,
 `create_issue`, `update_issue`, `delete_issue` and `check_issues`. Their
 parameters are the command's options with underscores for hyphens, a list for
-an option that can repeat and `true` for a flag. The exception is `--tag` of
-`create` and `list`, which is `tags` over MCP, like the field in issue files:
+an option that can repeat and `true` for a flag. The exceptions are `--tag` of
+`create` and `list`, which is `tags` over MCP, like the field in issue files,
+and `--not-tag` of `list`, which is `not_tags`:
 
 | Command line | MCP tool call |
 | --- | --- |
 | `zban list --status todo --status in-progress --ready` | `list_issues {"status": ["todo", "in-progress"], "ready": true}` |
 | `zban list --tag cli --tag storage` | `list_issues {"tags": ["cli", "storage"]}` |
+| `zban list --ready --not-tag maintainer` | `list_issues {"ready": true, "not_tags": ["maintainer"]}` |
 | `zban update zb-n938cw --add-tag cli --no-parent` | `update_issue {"id": "zb-n938cw", "add_tag": ["cli"], "no_parent": true}` |
 
 Each result is the JSON document that the command prints with `--json`. A
@@ -106,7 +108,7 @@ in [Using zban with agents](agents.mara.md#setup).
 | `delete_issue` | `delete` |
 | `check_issues` | `check`, with optional `fix` |
 
-The parameters of each tool are the options of its command, named with underscores for hyphens: a repeatable option takes a list and a flag a boolean. The positional arguments become `title`, `id` and `ids`. The one renamed option is the repeatable `--tag` of `create` and `list`, which becomes `tags` after the issue field it sets or filters on, because agents guess that name from issue files and JSON output; `tag` is then an unknown parameter like any other. The `--add-tag` and `--remove-tag` options of `update` keep their names, as `add_tag` and `remove_tag`.
+The parameters of each tool are the options of its command, named with underscores for hyphens: a repeatable option takes a list and a flag a boolean. The positional arguments become `title`, `id` and `ids`. The renamed options are the repeatable `--tag` of `create` and `list`, which becomes `tags` after the issue field it sets or filters on, because agents guess that name from issue files and JSON output, and the repeatable `--not-tag` of `list`, which becomes `not_tags` to match it; `tag` and `not_tag` are then unknown parameters like any other. The `--add-tag` and `--remove-tag` options of `update` keep their names, as `add_tag` and `remove_tag`.
 
 Every tool accepts an optional `directory`, an absolute path with the meaning of the CLI's `-C`: the project is searched upward from it. A relative path is rejected. The project is resolved on every call, from the call's `directory`, then the server's `-C`, then the server's working directory.
 

@@ -98,7 +98,8 @@ and every command takes `-C DIR` to act as if started in `DIR`.
 - `{{synopsis list}}`:
   open issues unless `{{param all}}` or `{{param status}}` asks for closed ones.
   Repeated values of one option match any of them; `{{param parent}}` matches
-  direct children only.
+  direct children only; `{{param not_tags}}` leaves out issues carrying any of
+  its tags.
 - `{{synopsis show}}`: full issues, with the body and the reverse relations.
 - `{{synopsis create}}`
 - `{{synopsis update}}`:

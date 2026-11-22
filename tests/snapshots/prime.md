@@ -87,10 +87,11 @@ The reasons in `not_ready` are `status`, `epic`, `blocked_by:<id>`, `ancestor_cl
 Commands and their options. `...` marks a repeatable option, IDs ignore case,
 and every command takes `-C DIR` to act as if started in `DIR`.
 
-- `zban list [--status S]... [--type T]... [--priority P]... [--tag T]... [--parent ID] [--ready] [--search TEXT] [--all]`:
+- `zban list [--status S]... [--type T]... [--priority P]... [--tag T]... [--not-tag T]... [--parent ID] [--ready] [--search TEXT] [--all]`:
   open issues unless `--all` or `--status` asks for closed ones.
   Repeated values of one option match any of them; `--parent` matches
-  direct children only.
+  direct children only; `--not-tag` leaves out issues carrying any of
+  its tags.
 - `zban show ID...`: full issues, with the body and the reverse relations.
 - `zban create TITLE [--type T] [--status S] [--priority P] [--tag T]... [--parent ID] [--blocked-by ID]... [--related ID]... [--discovered-from ID] [--body TEXT|-]`
 - `zban update ID [--status S] [--type T] [--priority P] [--title TEXT] [--add-tag T]... [--remove-tag T]... [--parent ID | --no-parent] [--add-blocked-by ID]... [--remove-blocked-by ID]... [--add-related ID]... [--remove-related ID]... [--discovered-from ID | --no-discovered-from] [--body TEXT|-] [--append TEXT|-] [--replace-old TEXT --replace-new TEXT]... [--handoff TEXT|- | --no-handoff] [--force]`:
