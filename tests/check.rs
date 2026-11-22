@@ -467,6 +467,18 @@ fn only_warnings_exit_zero_and_a_clean_project_says_so() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stdout(&output), "No problems found.\n");
     assert_eq!(stderr(&output), "");
+
+    // A fix that repairs the last finding reports the project clean.
+    let (_dir, misplaced) = project(&[(".zban/zb-aaaaaa.md", issue("done", ""))]);
+    let (status, findings) = check(&misplaced, &[]);
+    assert_eq!(
+        (status, findings),
+        (1, reported(&[(".zban/zb-aaaaaa.md", "error", "misplaced")]))
+    );
+    let output = zban(&misplaced, &["check", "--fix"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stdout(&output), "No problems found.\n");
+    assert_eq!(stderr(&output), "");
 }
 
 // @mara implements VER-CHECK

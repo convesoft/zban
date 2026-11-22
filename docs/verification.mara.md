@@ -80,7 +80,7 @@ Through the real binary: `update --handoff` adds a timestamped `## Handoff` sect
 :methods: test
 :verifies: REQ-CHECK
 
-Use a corpus of broken projects, one for each finding code in [[DES-CHECK]]. `zban check` reports each problem with that code, its severity and path. It exits non-zero on errors, and exits 0 when it finds only the warnings named in [[REQ-CHECK]]. A clean project prints `No problems found.` and exits 0, and its `--json` output is `{"findings": []}`. `zban check --fix` moves only misplaced files and deletes only leftover temporary files, leaving every other file and finding untouched, and a second check reports neither. A misplaced file whose target path is taken stays in place and is still reported. The temporary file of a real interrupted write is reported, and files whose names only resemble one are not.
+Use a corpus of broken projects, one for each finding code in [[DES-CHECK]]. `zban check` reports each problem with that code, its severity and path. It exits non-zero on errors, and exits 0 when it finds only the warnings named in [[REQ-CHECK]]. A clean project prints `No problems found.` and exits 0, and its `--json` output is `{"findings": []}`. A check that finds only warnings prints them without that line, and a `zban check --fix` that repairs every finding prints it. `zban check --fix` moves only misplaced files and deletes only leftover temporary files, leaving every other file and finding untouched, and a second check reports neither. A misplaced file whose target path is taken stays in place and is still reported. The temporary file of a real interrupted write is reported, and files whose names only resemble one are not.
 :::
 
 :::mara verification VER-CLI

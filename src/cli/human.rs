@@ -145,6 +145,7 @@ fn age(time: &Timestamp) -> String {
 /// One line per finding: `<path>: <severity>: <message> [<code>]`, with the
 /// path relative to the working directory when it lies below it. A clean
 /// check prints `No problems found.` (`DES-CHECK`).
+// @mara implements DES-CHECK
 pub fn findings(findings: &[Finding]) -> String {
     if findings.is_empty() {
         return "No problems found.\n".to_owned();

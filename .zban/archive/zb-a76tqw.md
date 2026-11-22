@@ -30,7 +30,10 @@ closed_at: 2026-11-22T12:53:10Z
 - `DES-CHECK` specifies the success line and that JSON and exit status do not change; `VER-CHECK` requires a clean project to print it, exit 0 and return `{"findings": []}` in JSON. `DES-CLI` needed no change, as it defers check output to `DES-CHECK`.
 - `tests/check.rs`: the clean-project test now expects exactly `No problems found.\n` on stdout and nothing on stderr (renamed to `only_warnings_exit_zero_and_a_clean_project_says_so`); the existing JSON assertion `{"findings": []}` with exit 0 still covers unchanged `--json` output. The `check` helper accepts the success line only as the whole output, so it can never mix with findings.
 
-Checks run: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all pass); `mara schema validate` and `mara project validate` (`valid: true`, `evaluation_complete: true`); `zban check` with the worktree binary (`No problems found.`, exit 0).
+- After review: `VER-CHECK` now states both boundaries (warnings only print no success line; a `--fix` that repairs every finding prints it), and `tests/check.rs` checks through the binary that `check --fix` repairing the last finding prints exactly `No problems found.` and exits 0. The `DES-CHECK` sentence on JSON and exit status was reworded so it cannot be read as clean and failing checks sharing a result. `findings` in `src/cli/human.rs` carries `// @mara implements DES-CHECK`, and `mara related DES-CHECK` reaches it.
+- Filed zb-ym7w1t (deferred backlog) for two older `VER-CHECK` gaps found in review: real interrupted-write temporary files are covered only through the library, and findings on a file moved by `--fix` are reported at its new path although the item says "untouched".
+
+Checks run: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all pass); `mara schema validate` and `mara project validate` (`valid: true`, `evaluation_complete: true`); `zban check` with the worktree binary (`No problems found.`, exit 0). All rerun after the review changes and after merging `origin/main`.
 
 ## Decisions made
 
