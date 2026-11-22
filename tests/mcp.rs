@@ -239,7 +239,7 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
         ],
         "create_issue",
         json!({"title": "Parse files", "type": "feature", "priority": "high",
-               "tag": ["storage"], "parent": E, "body": "- [ ] Read\n- [ ] Write"}),
+               "tags": ["storage"], "parent": E, "body": "- [ ] Read\n- [ ] Write"}),
     );
     assert_eq!(parse["ready"], true);
     let parse = s.created(0);
@@ -271,7 +271,7 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
     s.both(
         &["list", "--parent", E, "--tag", "storage"],
         "list_issues",
-        json!({"parent": E, "tag": ["storage"]}),
+        json!({"parent": E, "tags": ["storage"]}),
     );
 
     // Work on the first issue.
@@ -663,6 +663,45 @@ fn a_check_that_finds_errors_is_a_result() {
     let (status, fixed) = s.both(&["check", "--fix"], "check_issues", json!({"fix": true}));
     assert_eq!((status, fixed), (0, json!({"findings": []})));
     assert!(s.mcp.join(".zban/archive/zb-cccccc.md").is_file());
+}
+
+/// `create_issue` and `list_issues` name the repeatable `--tag` after the
+/// issue field, and refuse the old name `tag` like any unknown parameter.
+// @mara implements VER-SURFACE-PARITY
+#[test]
+fn create_and_list_take_tags_and_refuse_tag() {
+    let dir = temp_dir();
+    let root = dir.path();
+    fixture(root);
+    let before = snapshot(root, &[]);
+    let mut client = Client::start(root, &[]);
+    let tools = client.tools();
+    let params = |name: &str| {
+        let tool = tools.iter().find(|tool| tool["name"] == name).unwrap();
+        tool["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .clone()
+    };
+    for (tool, takes, refuses) in [
+        ("create_issue", "tags", "tag"),
+        ("list_issues", "tags", "tag"),
+        ("update_issue", "add_tag", "add_tags"),
+        ("update_issue", "remove_tag", "remove_tags"),
+    ] {
+        let params = params(tool);
+        assert_eq!(params[takes]["type"], "array", "{tool} {takes}");
+        assert!(!params.contains_key(refuses), "{tool} {refuses}");
+    }
+    for (tool, arguments) in [
+        ("create_issue", json!({"title": "Tagged", "tag": ["x"]})),
+        ("list_issues", json!({"tag": ["x"]})),
+    ] {
+        let called = client.call(tool, arguments);
+        assert_eq!(error_code(&called), "usage", "{tool}");
+        assert!(called.text.contains("`tag`"), "{}", called.text);
+    }
+    assert_eq!(snapshot(root, &[]), before);
 }
 
 /// Usage failures that only MCP has: a relative `directory`, and tools that

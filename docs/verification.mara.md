@@ -106,7 +106,7 @@ A fixture holds a file with Git conflict markers, an issue with an invalid statu
 :verifies: REQ-SURFACE-PARITY
 :verifies: REQ-MCP-STDIO
 
-A real MCP client talks to `zban mcp` over stdio and runs a create, block, ready, update, close and check flow. For the same requests against identical fixtures, the tool results equal the CLI's JSON output, and invalid arguments produce the same error codes. The fixtures include a parent with a nested child, so the results compare `child_counts` too. The tool list matches [[DES-MCP-TOOLS]]. Started outside a project, the server sends the short note as its instructions and every tool without a `directory` fails with `project_not_found`. Calls whose `directory` points into another project or worktree read and write only that project, and a relative `directory` is rejected.
+A real MCP client talks to `zban mcp` over stdio and runs a create, block, ready, update, close and check flow. For the same requests against identical fixtures, the tool results equal the CLI's JSON output, and invalid arguments produce the same error codes. The fixtures include a parent with a nested child, so the results compare `child_counts` too. The tool list matches [[DES-MCP-TOOLS]], and `create_issue` and `list_issues` take `tags` and refuse `tag` as an unknown parameter. Started outside a project, the server sends the short note as its instructions and every tool without a `directory` fails with `project_not_found`. Calls whose `directory` points into another project or worktree read and write only that project, and a relative `directory` is rejected.
 :::
 
 :::mara verification VER-AGENT-GUIDE

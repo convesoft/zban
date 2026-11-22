@@ -112,16 +112,30 @@ enum Kind {
 #[derive(Debug, Clone, Copy)]
 struct Param {
     /// The MCP parameter. The command-line option is `--` followed by the
-    /// name with hyphens for underscores.
+    /// name with hyphens for underscores, unless `option` names it.
     name: &'static str,
+    /// The command-line option without `--`, where it differs (`DES-MCP-TOOLS`).
+    option: Option<&'static str>,
     kind: Kind,
     /// Whether it takes several values: a repeatable option, or a list.
     many: bool,
 }
 
+impl Param {
+    /// The same parameter, with the command-line option `--{option}`.
+    // @mara implements DES-MCP-TOOLS
+    const fn option(self, option: &'static str) -> Self {
+        Self {
+            option: Some(option),
+            ..self
+        }
+    }
+}
+
 const fn flag(name: &'static str) -> Param {
     Param {
         name,
+        option: None,
         kind: Kind::Flag,
         many: false,
     }
@@ -130,6 +144,7 @@ const fn flag(name: &'static str) -> Param {
 const fn one(name: &'static str, placeholder: &'static str) -> Param {
     Param {
         name,
+        option: None,
         kind: Kind::Value(placeholder),
         many: false,
     }
@@ -138,6 +153,7 @@ const fn one(name: &'static str, placeholder: &'static str) -> Param {
 const fn many(name: &'static str, placeholder: &'static str) -> Param {
     Param {
         name,
+        option: None,
         kind: Kind::Value(placeholder),
         many: true,
     }
@@ -146,6 +162,7 @@ const fn many(name: &'static str, placeholder: &'static str) -> Param {
 const fn text(name: &'static str) -> Param {
     Param {
         name,
+        option: None,
         kind: Kind::Text,
         many: false,
     }
@@ -184,7 +201,7 @@ const OPERATIONS: &[Operation] = &[
             Optional(many("status", "S")),
             Optional(many("type", "T")),
             Optional(many("priority", "P")),
-            Optional(many("tag", "T")),
+            Optional(many("tags", "T").option("tag")),
             Optional(one("parent", "ID")),
             Optional(flag("ready")),
             Optional(one("search", "TEXT")),
@@ -204,7 +221,7 @@ const OPERATIONS: &[Operation] = &[
             Optional(one("type", "T")),
             Optional(one("status", "S")),
             Optional(one("priority", "P")),
-            Optional(many("tag", "T")),
+            Optional(many("tags", "T").option("tag")),
             Optional(one("parent", "ID")),
             Optional(many("blocked_by", "ID")),
             Optional(many("related", "ID")),
@@ -308,7 +325,10 @@ fn words<T: fmt::Display>(values: &[T]) -> String {
 
 /// The command-line option of `param`.
 fn option(param: Param) -> String {
-    format!("--{}", param.name.replace('_', "-"))
+    match param.option {
+        Some(option) => format!("--{option}"),
+        None => format!("--{}", param.name.replace('_', "-")),
+    }
 }
 
 /// A parameter named in prose.
@@ -502,6 +522,13 @@ mod tests {
         assert_eq!(
             both("synopsis show"),
             ("zban show ID...".to_owned(), "show_issues".to_owned())
+        );
+        assert_eq!(
+            both("list tags=T"),
+            (
+                "zban list --tag T".to_owned(),
+                r#"list_issues {"tags": [T]}"#.to_owned()
+            )
         );
         assert_eq!(
             both("param no_parent"),
