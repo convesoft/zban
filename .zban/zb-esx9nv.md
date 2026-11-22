@@ -5,6 +5,7 @@ type: feature
 tags:
   - cli
   - mcp
+parent: zb-v90b0k
 related:
   - zb-wbm14r
   - zb-banzx5
