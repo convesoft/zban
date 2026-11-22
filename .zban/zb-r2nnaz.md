@@ -55,6 +55,13 @@ zb-35d4qp, hint in `not_found` messages (pull request #56):
 
 - Only an ID in this project's format, with its prefix, that names no issue gets the hint; any other value, including an ID with another project's prefix, keeps the message showing the ID format, and `invalid_reference` is unchanged. Rests on `DES-CLI`, `REQ-NO-GIT`. Undo: add the hint to `named` in `src/operations.rs` as well.
 
+zb-esx9nv, `--not-tag` / `not_tags` (pull request #57):
+
+- An issue that carries both a wanted and an excluded tag is left out: the exclusion wins over `--tag`/`tags` and every other filter. Rests on `REQ-LIST-FILTERS`, `DES-CLI`. Undo: change the filter in `list` in `src/operations.rs`.
+- A valid tag that no issue carries is accepted and excludes nothing. Rests on `VER-CLI`. Undo: refuse unknown tags, which would need a list of known tags.
+- The MCP rendering of the agent guide does not mention `not_tags` (it stays at 3,787 of 3,800 characters); the tool schema describes it, and the CLI guide's synopsis shows `[--not-tag T]...`. Rests on `DES-AGENT-GUIDE`. Undo: add it to `src/guide.md` and cut something else.
+- Provisional, waiting on zb-q6q2fz: a value that is not a valid tag fails with `invalid_value` in `--tag`/`tags` as well as in `--not-tag`/`not_tags`, where 0.1.0 returned an empty list for `--tag`. The worker decided it and the orchestrator let it stand, because status, type and priority already refuse unknown values. Rests on `REQ-LIST-FILTERS`, `DES-CLI`. Undo: drop the `check_tag` call for `tags` in `list`, restore the sentence in both items and remove the `--tag` rows from the tests.
+
 ## Questions put to the maintainer
 
 - zb-q6q2fz: should `list --tag` refuse invalid tag values, as `--not-tag` does (zb-esx9nv, pull request #57)? Provisional answer: yes.
