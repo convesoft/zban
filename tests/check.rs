@@ -86,11 +86,18 @@ fn project(files: &[(&str, String)]) -> (TempDir, PathBuf) {
 type Reported = (String, String, String);
 
 /// Runs `zban check` with `args` in `root` and returns its exit status and
-/// findings. Each line is `<path>: <severity>: <message> [<code>]`.
+/// findings. Each line is `<path>: <severity>: <message> [<code>]`, and a
+/// clean check prints only `No problems found.`.
 fn check(root: &Path, args: &[&str]) -> (i32, Vec<Reported>) {
     let output = zban(root, &[&["check"], args].concat());
     assert_eq!(stderr(&output), "", "check {args:?} in {}", root.display());
-    let findings = stdout(&output)
+    let text = stdout(&output);
+    let text = if text == "No problems found.\n" {
+        ""
+    } else {
+        text.as_str()
+    };
+    let findings = text
         .lines()
         .map(|line| {
             let (path, rest) = line.split_once(": ").expect("a path");
@@ -430,7 +437,7 @@ fn each_broken_project_reports_its_code_severity_and_path() {
 
 // @mara implements VER-CHECK
 #[test]
-fn only_warnings_exit_zero_and_a_clean_project_prints_nothing() {
+fn only_warnings_exit_zero_and_a_clean_project_says_so() {
     let (_dir, root) = project(&[
         (".zban/zb-aaaaaa.md", issue("todo", "assignee: alice\n")),
         (
@@ -458,7 +465,19 @@ fn only_warnings_exit_zero_and_a_clean_project_prints_nothing() {
     let (_dir, clean) = project(&[(".zban/zb-aaaaaa.md", issue("todo", ""))]);
     let output = zban(&clean, &["check"]);
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(stdout(&output), "");
+    assert_eq!(stdout(&output), "No problems found.\n");
+    assert_eq!(stderr(&output), "");
+
+    // A fix that repairs the last finding reports the project clean.
+    let (_dir, misplaced) = project(&[(".zban/zb-aaaaaa.md", issue("done", ""))]);
+    let (status, findings) = check(&misplaced, &[]);
+    assert_eq!(
+        (status, findings),
+        (1, reported(&[(".zban/zb-aaaaaa.md", "error", "misplaced")]))
+    );
+    let output = zban(&misplaced, &["check", "--fix"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stdout(&output), "No problems found.\n");
     assert_eq!(stderr(&output), "");
 }
 

@@ -14,6 +14,8 @@ may act on another checkout.
   files or TODO comments.
 - One outcome per issue. Group larger work under an epic with
   `parent`, and order steps with `blocked_by`.
+- Park planned epics, backlog and human-only work as `draft`: nothing
+  under a `draft` is ready.
 - Write bodies for a reader without this conversation: the goal, the context
   and `- [ ]` task items.
 
@@ -70,15 +72,14 @@ A handoff note lets a new session continue unfinished work.
 
 ## Reference
 
-Types: `epic`, `feature`, `bug`, `task`. An epic groups other issues.
+Types: `epic`, `feature`, `bug`, `task`.
 Statuses: `draft`, `todo`, `in-progress`, `done`, `cancelled`. New issues are `todo`; `done` and `cancelled` are closed.
 Priorities, highest first: `critical`, `high`, `normal`, `low`, `deferred`.
 
 Relations: `parent`, `blocked_by` (issues to close first), `related` and
-`discovered_from` (the issue in progress when this one was found). `show_issues`
-shows both directions.
+`discovered_from`. `show_issues` shows both directions.
 
 An issue is ready when it is `todo`, not an epic, all its blockers are closed,
-and no ancestor is closed or has an open blocker.
-The reasons in `not_ready` are `status`, `epic`, `blocked_by:<id>`, `ancestor_closed:<id>`, `ancestor_blocked:<id>`.
+and no ancestor is closed, blocked or a `draft`.
+The reasons in `not_ready` are `status`, `epic`, `blocked_by:<id>`, `ancestor_closed:<id>`, `ancestor_blocked:<id>`, `ancestor_draft:<id>`.
 

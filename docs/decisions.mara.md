@@ -42,7 +42,7 @@ Agents in different worktrees cannot see each other's status changes until their
 :status: accepted
 :justifies: REQ-FIXED-VOCABULARY
 
-A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. zban fixes all three sets. `draft` keeps unrefined ideas out of ready work. `cancelled` keeps abandoned work apart from delivered work. There is no milestone type. Nested epics, ordered with `blocked_by`, cover phases inside larger work, and a tag groups a release that cuts across epics. Priorities are five named levels because names read better than numbers in prompts.
+A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. zban fixes all three sets. `draft` keeps unrefined ideas, and work parked on purpose, out of ready work together with everything under them ([[ADR-DRAFT-HOLDS-DESCENDANTS]]). `cancelled` keeps abandoned work apart from delivered work. There is no milestone type. Nested epics, ordered with `blocked_by`, cover phases inside larger work, and a tag groups a release that cuts across epics. Priorities are five named levels because names read better than numbers in prompts.
 :::
 
 :::mara decision ADR-RANDOM-IDS
@@ -180,6 +180,26 @@ The tests have one dependency of their own, `tempfile`, which is not built into 
 :justifies: DES-LIFECYCLE
 
 Closing an issue while its checklist or children are unfinished hides that work. Open children of a closed parent silently drop out of the ready list ([[DES-READINESS]]). Cascading the close to the children would avoid that, but one command would then rewrite many files, could stop part-way, and would give every child the parent's reason, although some may be finished, moved elsewhere or still wanted. zban refuses such a close unless it is forced, and it never closes another issue implicitly. A forced close leaves the open children in place, and `zban check` warns about them. Closing `done` and `cancelled` is treated the same way; only unchecked task items are specific to `done`.
+:::
+
+:::mara decision ADR-DRAFT-HOLDS-DESCENDANTS
+:mid: 01M81NANBTX4F8FH8A3NVBPCTA
+:title: Let a draft ancestor hold back its descendants
+:status: accepted
+:justifies: DES-READINESS
+:justifies: DES-AGENT-GUIDE
+
+`draft` keeps an issue out of ready work ([[ADR-FIXED-VOCABULARY]]), but zban 0.1.0 still offered its `todo` descendants: only closed or blocked ancestors held an issue back. Projects plan an epic and refine its children as `todo` before the epic should start, and they keep backlog and work only a human can do away from agents. Under autonomous orchestrators that pick from the ready list, the children of such planned epics were dispatched as soon as they were filed, and every orchestrator prompt had to filter parked and human-only work out by tag and priority conventions, such as `backlog`, `deferred` or `maintainer`, which zban neither defines nor checks.
+
+The maintainer decided that a `draft` ancestor holds back every descendant, as a closed or blocked one does, and zban reports `ancestor_draft:<id>` for each `draft` ancestor ([[DES-READINESS]]). Setting one issue to `draft` parks its whole subtree: a planned epic stays `draft` and leaves `draft` when its work may start. The agent guide tells agents to park planned epics, backlog and human-only work as `draft` ([[DES-AGENT-GUIDE]]). An ancestor's status `in-progress` still holds nothing back by itself, because its children carry its work; like any open ancestor, it holds its descendants back while it has an open blocker.
+
+Rejected alternatives:
+
+- **Tag or priority conventions.** zban stays unchanged, but each project and orchestrator invents its own, and the ready list stays wrong for every agent that does not know them.
+- **A new status for parked work.** It would tell unrefined work apart from work held back on purpose, but it enlarges the fixed vocabulary for a distinction readiness does not need.
+- **Setting each child to `draft`.** It works without a change, but each child has to be promoted when the epic starts, and a `todo` child filed later is offered at once.
+
+The costs: a refined child under a `draft` epic waits until the epic becomes `todo`, and after upgrading, `todo` issues under an existing `draft` leave the ready list. Their `not_ready` names the `draft` ancestor.
 :::
 
 :::mara decision ADR-WRITE-LOCK

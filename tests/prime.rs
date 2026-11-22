@@ -339,6 +339,7 @@ fn vocabulary_equals_the_code(guide: &str) {
             NotReady::BlockedBy(id.clone()),
             NotReady::AncestorClosed(id.clone()),
             NotReady::AncestorBlocked(id.clone()),
+            NotReady::AncestorDraft(id.clone()),
         ]
         .iter()
         .map(|reason| reason.to_string().replace(id.as_str(), "<id>"))
@@ -430,6 +431,22 @@ fn guide_covers_its_sections_within_150_lines() {
         assert_eq!(headings, SECTIONS);
         let lines = guide.lines().count();
         assert!(lines <= 150, "the guide has {lines} lines");
+    }
+}
+
+// @mara implements VER-AGENT-GUIDE
+#[test]
+fn guide_parks_work_that_must_not_start_as_draft() {
+    for guide in guides() {
+        let guide = guide.replace("\n  ", " ");
+        assert!(
+            guide.contains("- Park planned epics, backlog and human-only work as `draft`"),
+            "{guide}"
+        );
+        assert!(
+            guide.contains("no ancestor is closed, blocked or a `draft`."),
+            "{guide}"
+        );
     }
 }
 

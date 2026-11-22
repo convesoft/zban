@@ -44,6 +44,8 @@ pub enum NotReady {
     AncestorClosed(Id),
     /// This ancestor has an open blocker.
     AncestorBlocked(Id),
+    /// This ancestor is a `draft`.
+    AncestorDraft(Id),
 }
 
 impl fmt::Display for NotReady {
@@ -54,6 +56,7 @@ impl fmt::Display for NotReady {
             Self::BlockedBy(id) => write!(f, "blocked_by:{id}"),
             Self::AncestorClosed(id) => write!(f, "ancestor_closed:{id}"),
             Self::AncestorBlocked(id) => write!(f, "ancestor_blocked:{id}"),
+            Self::AncestorDraft(id) => write!(f, "ancestor_draft:{id}"),
         }
     }
 }
@@ -170,6 +173,12 @@ impl<'a> Graph<'a> {
                 .iter()
                 .filter(|ancestor| self.open_blockers(ancestor.issue).next().is_some())
                 .map(|ancestor| NotReady::AncestorBlocked(ancestor.id.clone())),
+        );
+        reasons.extend(
+            ancestors
+                .iter()
+                .filter(|ancestor| ancestor.issue.status == Status::Draft)
+                .map(|ancestor| NotReady::AncestorDraft(ancestor.id.clone())),
         );
         reasons
     }

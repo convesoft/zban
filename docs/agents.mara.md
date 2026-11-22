@@ -119,7 +119,7 @@ An issue can hold one handoff note in its body. An update writes the note, repla
 
 The guide is one template compiled into the binary and kept under about 150 lines, because it is paid for in every agent context. The MCP rendering also stays within 3,800 characters, a margin under the 4,096 at which Claude Code truncates server instructions. It leaves out what the tool schemas carry, such as each tool's parameters, and both renderings share tight wording rather than diverging text. Its sections are:
 
-1. **Track work in zban.** Use issues instead of ad-hoc todo lists.
+1. **Track work in zban.** Use issues instead of ad-hoc todo lists. Park planned epics, backlog and work only a human can do as `draft`, which keeps them and everything under them out of ready work ([[ADR-DRAFT-HOLDS-DESCENDANTS]]).
 2. **Before starting.** Look for an existing issue, otherwise create one; set it `in-progress`.
 3. **While working.** Keep the body's checklist current. File newly discovered work as separate issues with `discovered_from` rather than widening the current one. On a `conflict` error, show the issue again and retry.
 4. **Finishing.** Add `## Summary of Changes` and set `done`. If unchecked items or open children remain, finish them, close them or move them into follow-up issues; force only when the user agrees. To abandon work, add `## Reasons for Cancelling` and set `cancelled`.
