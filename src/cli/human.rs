@@ -30,7 +30,8 @@ pub fn changed(verb: &str, issue: &IssueView) -> String {
 }
 
 /// One line per issue: ID, status, priority, type, title, checklist
-/// progress and the age of the handoff note.
+/// progress, child progress and the age of the handoff note.
+// @mara implements DES-CLI
 pub fn list(issues: &[ListedIssue]) -> String {
     if issues.is_empty() {
         return "No issues.\n".to_owned();
@@ -53,6 +54,13 @@ pub fn list(issues: &[ListedIssue]) -> String {
                 issue.checklist.checked, issue.checklist.total
             );
         }
+        if issue.child_counts.total > 0 {
+            let _ = write!(
+                text,
+                "  children {}/{} closed",
+                issue.child_counts.closed, issue.child_counts.total
+            );
+        }
         if let Some(written_at) = handoff_at {
             let _ = write!(text, "  handoff {}", age(written_at));
         }
@@ -68,6 +76,7 @@ pub fn show(issues: &[IssueDetail]) -> String {
     shown.join("\n")
 }
 
+// @mara implements DES-CLI
 fn detail(detail: &IssueDetail) -> String {
     let issue = &detail.issue;
     let mut text = format!("{}: {}\n", issue.id, issue.title);
@@ -110,6 +119,13 @@ fn detail(detail: &IssueDetail) -> String {
             issue.checklist.checked, issue.checklist.total
         );
         field("checklist", &progress);
+    }
+    if issue.child_counts.total > 0 {
+        let progress = format!(
+            "{}/{} closed",
+            issue.child_counts.closed, issue.child_counts.total
+        );
+        field("child_counts", &progress);
     }
     let reasons: Vec<_> = issue.not_ready.iter().map(ToString::to_string).collect();
     let ready = if issue.ready {

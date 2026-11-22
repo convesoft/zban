@@ -377,6 +377,7 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
 }
 
 // @mara implements VER-RELATIONS-READY
+// @mara implements VER-SURFACE-PARITY
 #[test]
 fn a_draft_ancestor_holds_back_its_descendants_on_both_surfaces() {
     let mut s = Surfaces::new();
@@ -405,7 +406,6 @@ fn a_draft_ancestor_holds_back_its_descendants_on_both_surfaces() {
     let sub = s.created(2);
     let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
     assert_eq!(ids(&ready), [A]);
-
     s.both(
         &["update", &epic, "-s", "todo"],
         "update_issue",
@@ -413,6 +413,21 @@ fn a_draft_ancestor_holds_back_its_descendants_on_both_surfaces() {
     );
     let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
     assert_eq!(ids(&ready), [step.as_str(), sub.as_str(), A]);
+
+    // Child progress counts direct children only, alike on both surfaces.
+    s.both(
+        &["update", &sub, "-s", "done"],
+        "update_issue",
+        json!({"id": sub, "status": "done"}),
+    );
+    let (_, shown) = s.both(
+        &["show", &epic, &step],
+        "show_issues",
+        json!({"ids": [epic, step]}),
+    );
+    let counts = |n: usize| shown["issues"][n]["child_counts"].clone();
+    assert_eq!(counts(0), json!({"closed": 0, "total": 1}));
+    assert_eq!(counts(1), json!({"closed": 1, "total": 1}));
 }
 
 // @mara implements VER-SURFACE-PARITY

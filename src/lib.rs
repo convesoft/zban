@@ -23,6 +23,6 @@ pub use handoff::Handoff;
 pub use id::{Id, Prefix};
 pub use issue::{Issue, IssueType, Priority, Problem, ProblemCode, Severity, Status};
 pub use lifecycle::Checklist;
-pub use relations::{Entry, Graph, IssueRef, NotReady, Reverse};
+pub use relations::{ChildCounts, Entry, Graph, IssueRef, NotReady, Reverse};
 pub use store::{IssueFile, Project};
 pub use timestamp::Timestamp;
