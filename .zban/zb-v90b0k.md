@@ -1,10 +1,10 @@
 ---
-title: "zban 0.2: CLI, readiness, MCP and docs improvements"
+title: "zban 1.0.0-rc.1: CLI, readiness, MCP and docs improvements"
 status: todo
 type: epic
 priority: high
 tags:
-  - release-0-2
+  - release-1-0-rc1
 created_at: 2026-11-22T12:35:06Z
 ---
 
