@@ -123,7 +123,7 @@ Exit status is 0 on success, 1 when an operation fails or `check` finds errors, 
 | `project_not_found` | No project is found ([[DES-PROJECT-LAYOUT]]) |
 | `project_exists` | `init` where `.zban/` already exists |
 | `invalid_config` | The configuration is malformed or has an unknown `format_version` |
-| `not_found` | A named issue does not exist |
+| `not_found` | A named issue does not exist. For a well-formed ID the message adds a fixed hint that the issue may exist on another branch or worktree; zban does not look there ([[REQ-NO-GIT]]). A value that cannot be an ID gets a message showing the ID format instead. |
 | `ambiguous_id` | A named ID matches a file in both `.zban/` and `.zban/archive/` |
 | `unreadable` | The operation needs an issue file that cannot be read ([[REQ-DAMAGED-DATA]]) |
 | `invalid_value` | A value breaks [[DES-ISSUE-FILE]] or [[DES-PROJECT-LAYOUT]], such as an unknown status, a multi-line title or an invalid prefix |

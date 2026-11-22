@@ -139,7 +139,9 @@ impl<'a> Graph<'a> {
     }
 
     /// The readable issue `id`. Fails with `not_found`, `ambiguous_id` or
-    /// `unreadable` otherwise.
+    /// `unreadable` otherwise. The `not_found` message hints that the issue
+    /// may exist on another branch or worktree, without looking there.
+    // @mara implements DES-CLI
     pub fn resolve(&self, id: &Id) -> Result<IssueRef<'a>> {
         match self.get(id) {
             Some(Entry::Readable(found)) => Ok(found),
@@ -152,7 +154,9 @@ impl<'a> Graph<'a> {
             )),
             None => Err(Error::new(
                 ErrorCode::NotFound,
-                format!("issue {id} does not exist"),
+                format!(
+                    "issue {id} does not exist in this project; it may exist on another branch or worktree"
+                ),
             )),
         }
     }

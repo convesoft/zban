@@ -406,6 +406,21 @@ fn failures_print_an_error_object_and_exit_with_status_1() {
         "{}",
         stderr(&output)
     );
+    assert!(
+        stderr(&output).contains("another branch or worktree"),
+        "{}",
+        stderr(&output)
+    );
+    // Only a well-formed ID gets the hint; others learn the ID format.
+    for (id, hinted) in [("zb-000000", true), ("nonsense", false)] {
+        let (_, value) = run_json(&root, &["show", id]);
+        let message = value["error"]["message"].as_str().unwrap();
+        assert_eq!(
+            message.contains("another branch or worktree"),
+            hinted,
+            "{value}"
+        );
+    }
     assert_eq!(snapshot(&root.join(".zban"), &[]), before);
 }
 
