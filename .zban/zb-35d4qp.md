@@ -1,6 +1,6 @@
 ---
 title: Add a branch or worktree hint to not_found error messages
-status: todo
+status: in-progress
 type: feature
 tags:
   - cli
