@@ -14,6 +14,7 @@ zban list --ready                           # what can be started now
 zban list --status in-progress              # what is being worked on
 zban list --parent zb-9jra34                # direct children of an epic
 zban list --type bug --tag storage --search "frontmatter"
+zban list --ready --not-tag maintainer      # ready work, without issues tagged maintainer
 zban show zb-n938cw zb-2b3mf7               # full issues, including body and reverse relations
 zban update zb-n938cw -s in-progress
 zban update zb-n938cw --replace-old "- [ ] Preserve unknown keys" --replace-new "- [x] Preserve unknown keys"
@@ -69,7 +70,7 @@ Every command except `mcp` accepts `--json` and then writes exactly one JSON doc
 :satisfies: NEED-FIND-NEXT
 :satisfies: NEED-PROJECT-MEMORY
 
-Listing filters by status, type, priority, tag, parent and readiness, and searches title and body case-insensitively. The parent filter matches direct children only. Repeated values of one filter match any of them, and different filters must all match. Closed issues are excluded unless the request includes them or asks for a closed status. Showing accepts several IDs in one request.
+Listing filters by status, type, priority, tag, parent and readiness, excludes issues by tag, and searches title and body case-insensitively. The parent filter matches direct children only. Repeated values of one filter match any of them, and different filters must all match. The tag exclusion leaves out every issue that carries any of its tags, even one that the other filters, the tag filter included, select. A status, type, priority or tag value that no issue could carry is refused rather than matching nothing. Closed issues are excluded unless the request includes them or asks for a closed status. Showing accepts several IDs in one request.
 :::
 
 :::mara requirement REQ-BODY-EDITS
@@ -105,7 +106,7 @@ The command line and the MCP server expose the same operations with the same val
 | --- | --- |
 | `init` | `[--prefix P]` |
 | `create <title>` | `-t TYPE`, `-s STATUS`, `-p PRIORITY`, `--tag T`…, `--parent ID`, `--blocked-by ID`…, `--related ID`…, `--discovered-from ID`, `--body TEXT\|-` |
-| `list` | `-s, --status S`…, `-t, --type T`…, `-p, --priority P`…, `--tag T`…, `--parent ID` (direct children), `--ready`, `--search TEXT`, `--all` |
+| `list` | `-s, --status S`…, `-t, --type T`…, `-p, --priority P`…, `--tag T`…, `--not-tag T`…, `--parent ID` (direct children), `--ready`, `--search TEXT`, `--all` |
 | `show <id>…` | — |
 | `update <id>` | `-s`, `-t`, `-p`, `--title`, `--add-tag`/`--remove-tag`, `--parent ID`/`--no-parent`, `--add-blocked-by`/`--remove-blocked-by`, `--add-related`/`--remove-related`, `--discovered-from ID`/`--no-discovered-from`, `--body TEXT\|-`, `--append TEXT\|-`, `--replace-old TEXT --replace-new TEXT` (repeatable, applied in order), `--handoff TEXT\|-`/`--no-handoff` ([[DES-HANDOFF]]), `--force` |
 | `delete <id>` | — |
@@ -113,7 +114,7 @@ The command line and the MCP server expose the same operations with the same val
 | `prime` | Prints the agent guide ([[DES-AGENT-GUIDE]]). Outside a project it prints nothing and exits 0, so global hooks are harmless. With `--json` it prints `{"guide": "..."}`, with `null` outside a project. |
 | `mcp` | Serves MCP over stdio ([[DES-MCP-TOOLS]]). Takes no `--json`. |
 
-In `create`, `list` and `update`, `-s`, `-t` and `-p` are short for `--status`, `--type` and `--priority`. `list --parent` resolves its ID as `show` does, so an ID that is malformed or names no issue fails with `not_found`, and one naming two files or an unreadable file fails with `ambiguous_id` or `unreadable`. Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, `--append`, then the handoff.
+In `create`, `list` and `update`, `-s`, `-t` and `-p` are short for `--status`, `--type` and `--priority`. `list --not-tag` leaves out every issue that carries any of its tags, also when the issue carries a tag of `--tag`, and composes with every other filter. The values of `list --tag` and `--not-tag` must be valid tags ([[DES-ISSUE-FILE]]), or the request fails with `invalid_value`, as an unknown status, type or priority does: no readable issue can carry an invalid tag, so such a filter would silently select nothing, or exclude nothing. `list --parent` resolves its ID as `show` does, so an ID that is malformed or names no issue fails with `not_found`, and one naming two files or an unreadable file fails with `ambiguous_id` or `unreadable`. Every command accepts the global option `-C, --directory DIR` ([[DES-PROJECT-LAYOUT]]), and every command except `mcp` accepts `--json`. At most one option per request reads standard input. An update applies its body edits in the order `--body`, the replacements, `--append`, then the handoff.
 
 Exit status is 0 on success, 1 when an operation fails or `check` finds errors, and 2 for invalid usage. Every command except `init`, `prime` and `mcp` fails with `project_not_found` when no project is found; `mcp` starts anyway and fails each tool call instead ([[DES-MCP-TOOLS]]). The error codes are:
 

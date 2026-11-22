@@ -561,7 +561,8 @@ fn guide_lists_every_option_of_each_command() {
 
         // The tool takes the same options as parameters, named with
         // underscores, besides `directory` and the positional arguments.
-        // `--tag` is `tags`, like the issue field (`DES-MCP-TOOLS`).
+        // `--tag` is `tags`, like the issue field, and `--not-tag` is
+        // `not_tags` (`DES-MCP-TOOLS`).
         let (tool, schema) = schemas
             .iter()
             .find(|(tool, _)| tool.split('_').next() == Some(command.as_str()))
@@ -572,6 +573,7 @@ fn guide_lists_every_option_of_each_command() {
             .keys()
             .map(|name| match name.as_str() {
                 "tags" => "--tag".to_owned(),
+                "not_tags" => "--not-tag".to_owned(),
                 name => format!("--{}", name.replace('_', "-")),
             })
             .collect();

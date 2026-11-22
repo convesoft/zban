@@ -126,7 +126,7 @@ The guide is one template compiled into the binary and kept under about 150 line
 5. **Committing.** Commit issue files together with the code they describe.
 6. **Handoffs.** Writing and resuming handoff notes, as in [[DES-HANDOFF]].
 7. **Finding work.** Use the ready list and offer the top candidates; show an issue before starting it.
-8. **Reference.** Types, statuses, priorities, relations and the readiness rule. The command-line rendering also lists every command with its options; the MCP rendering leaves the tools' parameters to their schemas.
+8. **Reference.** Types, statuses, priorities, relations and the readiness rule. The command-line rendering also lists every command with its options, such as `list --not-tag`, and says that it leaves out issues carrying any of its tags; the MCP rendering leaves the tools' parameters, such as `not_tags` of `list_issues`, to their schemas.
 
 The MCP rendering also tells agents to pass `directory` on every call when they work in a worktree or outside the directory the server started in.
 

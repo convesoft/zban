@@ -17,7 +17,7 @@ use crate::error::{Error, ErrorCode, Result};
 use crate::guide::Surface;
 use crate::handoff::{self, Handoff};
 use crate::id::{Id, Prefix};
-use crate::issue::{Issue, IssueType, Priority, Severity, Status};
+use crate::issue::{Issue, IssueType, Priority, Severity, Status, check_tag};
 use crate::lifecycle::{self, Checklist};
 use crate::markdown::{joined, stored};
 use crate::relations::{ChildCounts, Entry, Graph, IssueRef, NotReady};
@@ -148,6 +148,10 @@ pub struct ListRequest {
     pub types: Vec<String>,
     pub priorities: Vec<String>,
     pub tags: Vec<String>,
+    /// Excludes every issue that carries any of these tags, even one that
+    /// `tags` selects.
+    // @mara implements REQ-LIST-FILTERS
+    pub not_tags: Vec<String>,
     /// Matches direct children of this issue only.
     pub parent: Option<String>,
     pub ready: bool,
@@ -237,6 +241,13 @@ pub fn list(project: &Project, request: &ListRequest) -> Result<Issues<ListedIss
     let statuses: Vec<Status> = parse_all(&request.statuses)?;
     let types: Vec<IssueType> = parse_all(&request.types)?;
     let priorities: Vec<Priority> = parse_all(&request.priorities)?;
+    // A tag that no issue could carry is refused, like an unknown status
+    // (`DES-CLI`).
+    request
+        .tags
+        .iter()
+        .chain(&request.not_tags)
+        .try_for_each(|tag| check_tag(tag))?;
     let parent = request
         .parent
         .as_deref()
@@ -265,6 +276,7 @@ pub fn list(project: &Project, request: &ListRequest) -> Result<Issues<ListedIss
             && (types.is_empty() || types.contains(&issue.issue_type))
             && (priorities.is_empty() || priorities.contains(&issue.priority))
             && (request.tags.is_empty() || issue.tags.iter().any(|t| request.tags.contains(t)))
+            && !issue.tags.iter().any(|t| request.not_tags.contains(t))
     };
     let issues = graph
         .issues()

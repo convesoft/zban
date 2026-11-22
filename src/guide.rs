@@ -202,6 +202,7 @@ const OPERATIONS: &[Operation] = &[
             Optional(many("type", "T")),
             Optional(many("priority", "P")),
             Optional(many("tags", "T").option("tag")),
+            Optional(many("not_tags", "T").option("not-tag")),
             Optional(one("parent", "ID")),
             Optional(flag("ready")),
             Optional(one("search", "TEXT")),

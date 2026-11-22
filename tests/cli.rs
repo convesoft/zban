@@ -662,6 +662,73 @@ fn list_filters_select_issues_in_listing_order() {
     assert_eq!(reasons(E), serde_json::json!(["epic"]));
 }
 
+/// `--not-tag` leaves out every issue carrying any of its tags, even one that
+/// `--tag` selects, and composes with the other filters. In the fixture, A
+/// carries `storage`, B carries `storage` and `cli`, and the closed F carries
+/// `cli`. The test adds H, a ready task carrying `cli`, so that ready work
+/// holds an issue each exclusion keeps and one it drops. Each case keeps some
+/// issues and drops others.
+// @mara implements VER-CLI
+#[test]
+fn list_not_tag_leaves_out_issues_carrying_an_excluded_tag() {
+    const H: &str = "zb-hhhhhh";
+    let (_dir, root) = fixture();
+    write_files(
+        &root,
+        &[(
+            open(H).as_str(),
+            issue("Tidy files", "todo", "task", "tags:\n  - cli\n", 8, "").as_str(),
+        )],
+    );
+    for (args, expected) in [
+        (&[][..], &[B, A, E, D, H, C][..]),
+        (&["--all"], &[B, A, G, E, D, F, H, C]),
+        (&["--not-tag", "cli"], &[A, E, D, C]),
+        (&["--not-tag", "storage"], &[E, D, H, C]),
+        (&["--not-tag", "cli", "--all"], &[A, G, E, D, C]),
+        (&["--not-tag", "storage", "--all"], &[G, E, D, F, H, C]),
+        (
+            &["--not-tag", "cli", "--not-tag", "storage", "--all"],
+            &[G, E, D, C],
+        ),
+        // A valid tag that no issue carries leaves out nothing.
+        (&["--not-tag", "absent"], &[B, A, E, D, H, C]),
+        // B carries both the wanted and the excluded tag.
+        (&["--tag", "storage", "--not-tag", "cli"], &[A]),
+        (&["--tag", "cli", "--not-tag", "storage", "--all"], &[F, H]),
+        (&["--tag", "cli", "--not-tag", "cli", "--all"], &[]),
+        (&["--ready"], &[A, H]),
+        (&["--ready", "--not-tag", "cli"], &[A]),
+        (&["--ready", "--not-tag", "storage"], &[H]),
+        (&["--parent", E, "--not-tag", "cli", "--all"], &[A]),
+        (&["--type", "task", "--not-tag", "storage"], &[D, H]),
+        (&["--status", "todo", "--not-tag", "cli"], &[A, E, D]),
+        (
+            &["-s", "todo", "-s", "in-progress", "--not-tag", "storage"],
+            &[E, D, H],
+        ),
+        (&["--search", "files"], &[A, D, H]),
+        (&["--search", "files", "--not-tag", "storage"], &[D, H]),
+        (&["--search", "files", "--not-tag", "cli"], &[A, D]),
+    ] {
+        assert_eq!(listed(&root, args), expected, "{args:?}");
+    }
+
+    // A value that no issue could carry is refused, in `--tag` as in
+    // `--not-tag`, like an unknown status (`DES-CLI`).
+    let before = snapshot(&root.join(".zban"), &[]);
+    for args in [
+        &["list", "--not-tag", "Bad Tag"][..],
+        &["list", "--not-tag", ""],
+        &["list", "--not-tag", "cli", "--not-tag", "x-"],
+        &["list", "--tag", "storage", "--not-tag", "CLI"],
+        &["list", "--tag", "Storage"],
+    ] {
+        assert_eq!(error_code(&root, args), "invalid_value", "{args:?}");
+    }
+    assert_eq!(snapshot(&root.join(".zban"), &[]), before);
+}
+
 /// `-s`, `-t` and `-p` are short for `--status`, `--type` and `--priority`
 /// in `list`, as in `create` and `update`.
 // @mara implements VER-CLI
