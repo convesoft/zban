@@ -129,13 +129,17 @@ Each release archive holds the binary, the README, zban's two license files and 
 
 zban is therefore distributed on npm alongside GitHub Releases as five packages under the `@convesoft` scope:
 
-- `@convesoft/zban`: the main dispatcher package containing `bin/zban.cjs`, `README.md`, `LICENSE-MIT`, `LICENSE-APACHE` and `optionalDependencies` pinning all four platform packages to the exact release version.
+- `@convesoft/zban`: the main dispatcher package containing `bin/zban.cjs`, the `docs/` folder, `README.md`, `LICENSE-MIT`, `LICENSE-APACHE` and `optionalDependencies` pinning all four platform packages to the exact release version.
 - `@convesoft/zban-linux-x64` (`x86_64-unknown-linux-musl`, `os: ["linux"]`, `cpu: ["x64"]`),
 - `@convesoft/zban-linux-arm64` (`aarch64-unknown-linux-musl`, `os: ["linux"]`, `cpu: ["arm64"]`),
 - `@convesoft/zban-darwin-arm64` (`aarch64-apple-darwin`, `os: ["darwin"]`, `cpu: ["arm64"]`), and
 - `@convesoft/zban-darwin-x64` (`x86_64-apple-darwin`, `os: ["darwin"]`, `cpu: ["x64"]`).
 
 Each platform package holds `bin/zban`, `README.md`, `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-LICENSES`. Because the Linux binaries are statically linked against musl ([[ADR-RUST-BINARY]]), the Linux packages run on both glibc and musl distributions and set no `libc` restriction.
+
+`@convesoft/zban` carries every file of the repository's `docs/` folder as it is, in a `docs/` folder beside its `README.md`, so that coding agents and developers read, under `node_modules/@convesoft/zban/docs/`, the user guide and specification of the version they installed rather than those of `main`. The maintainer decided this on 22 November 2026, following the pattern that `@convesoft/nx-rust` adopted for its own documentation. Only the main package carries the pages: every installation gets it, so copies in the four platform packages would add nothing, and the release archives stay as [[ADR-RUST-BINARY]] describes them. `scripts/package-npm.mjs` copies the folder whole, so a new page ships without a change to the script, and the release workflow fails if the packed `@convesoft/zban` lacks `docs/index.mara.md` or any other file of `docs/`. The README's links into `docs/` resolve inside the installed package, so a sentence in the README is the only pointer to the bundled pages: no separate pointer file is added, and the agent guide does not change.
+
+Three consequences are accepted. The pages ship as they are, so a relative link that leaves `docs/`, such as the documentation index's link to `.zban/`, does not resolve inside the package, nor do the README's links to `.zban/`, `.mara/` and `AGENTS.md`. The README in the platform packages and the release archives links into a `docs/` folder that they do not carry. And `@convesoft/zban` grows from about 21 kB to about 127 kB unpacked, 44 kB packed, as measured when this was decided. A pull request that changes only the pages does not run the release workflow, because packing does not depend on their content; the check runs on every release and on every pull request that changes the packaging.
 
 The repository adopts Nx with `@convesoft/nx-rust` at the root (`package.json`, `pnpm-lock.yaml`, `nx.json`) for release versioning and changelog generation, while keeping `Cargo.toml` as the single source of truth for the version:
 
