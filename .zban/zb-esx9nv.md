@@ -1,6 +1,6 @@
 ---
 title: Add --not-tag / not_tags negative tag filter to list
-status: todo
+status: in-progress
 type: feature
 tags:
   - cli
