@@ -23,6 +23,16 @@ or for one project, in its `.mcp.json`:
 }
 ```
 
+Or without a global `zban` binary on `PATH`, via `npx`:
+
+```json
+{
+  "mcpServers": {
+    "zban": { "command": "npx", "args": ["-y", "@convesoft/zban", "mcp"] }
+  }
+}
+```
+
 Codex, in `~/.codex/config.toml`:
 
 ```toml

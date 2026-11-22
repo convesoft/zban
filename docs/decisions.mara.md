@@ -106,17 +106,51 @@ MCP gives agents typed tools and server instructions in clients that support the
 :status: accepted
 :justifies: DES-SHARED-CORE
 
-zban is written in Rust and ships as one self-contained binary. It is distributed only through GitHub Releases: each release attaches prebuilt binaries and a SHA-256 checksum file, and its tag can be built from source with `cargo install --git https://github.com/convesoft/zban --tag vX.Y.Z`. zban is not published to crates.io, and its manifest sets `publish = false` so that nobody publishes it by accident. zban is an application, not a library other crates depend on, and one channel keeps a release to pushing a tag, with no registry account, publish token or crate name to maintain. Package-manager wrappers, such as an npm package, are not part of v1; adding one needs its own decision. The license is `MIT OR Apache-2.0`.
+zban is written in Rust and ships as one self-contained binary. It is distributed through GitHub Releases and npm ([[ADR-NPM-DISTRIBUTION]]): each GitHub release attaches prebuilt binaries and a SHA-256 checksum file, each npm release publishes `@convesoft/zban` with four per-platform binary packages, and any release tag can be built from source with `cargo install --locked --git https://github.com/convesoft/zban --tag vX.Y.Z`. zban is not published to crates.io, and its manifest sets `publish = false` so that nobody publishes it by accident: zban is an application, not a library other crates depend on. The license is `MIT OR Apache-2.0`.
 
 v1 supports Linux and macOS on x86_64 and aarch64. Windows is deferred until there is a need for it, because it needs its own handling of atomic file replacement, CRLF line endings and paths.
 
 Release binaries are built for `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin` and `aarch64-apple-darwin`. On Linux, musl is chosen over glibc because the binary is then statically linked: one file runs on every distribution, whatever its glibc version, including musl-based ones such as Alpine. A glibc binary would instead have to be built against the oldest glibc it should support. musl's slower memory allocator does not matter to a short-lived command that reads small files.
 
-A release is cut by pushing a tag `vX.Y.Z` that names the version in `Cargo.toml` and points at a commit on `main`. The release workflow refuses any other tag, and it runs the test suite on the tagged commit, on each platform whose binary it can run, before it creates the release. A release then ships only code that has landed on `main` and passes its tests.
+A release is cut from `main` (or a `release/*` branch) after bumping `Cargo.toml` and `Cargo.lock` with `pnpm nx release version`, by dispatching `.github/workflows/release.yml` ([[ADR-NPM-DISTRIBUTION]]). The workflow runs the test suite on the commit being released, on each platform whose binary it can run, before publishing to npm, tagging `vX.Y.Z` and creating the GitHub Release. A release then ships only code that has landed and passes its tests.
 
 CI and the release workflow build with one exact Rust version, pinned in `rust-toolchain.toml` together with the `rustfmt` and `clippy` components and the four release targets. A new Rust release then cannot fail `main` through a changed format or lint while the repository stays the same, and a release tag can be rebuilt with the compiler that built it. The pin is bumped deliberately, in a pull request of its own that also carries whatever the new version requires, such as reformatting. `rust-version` in `Cargo.toml` separately declares the oldest Rust that builds zban from source, and a CI job runs the test suite with that version, read from the manifest, so that the declared minimum stays true. Following the floating `stable` channel was rejected because Rust 1.100.0 failed `main` through a rustfmt change alone, and because release builds could not be reproduced.
 
 Each release archive holds the binary, the README, zban's two license files and `THIRD-PARTY-LICENSES`, which gives the license texts of the crates in `Cargo.lock` that the build for its platform uses and names the crates under each. Most of these crates are licensed under MIT or Apache-2.0, which ask anyone who redistributes them in binary form to pass on their notices. The release workflow writes the file on each build with `cargo-about`, installed at a pinned version with `cargo install --locked`, from `about.toml` and the template `about.hbs` in the repository. `about.toml` lists the licenses the crates may use, and the license files to quote for crates whose licensing `cargo-about` cannot read on its own. A crate under another license, or a quoted file whose checksum changed, fails the release until someone reviews it. `cargo-about` is a release tool only: it is not a dependency in `Cargo.toml`, and contributors never run it. The file is plain text, like the rest of the archive, so it reads in a terminal. A hand-maintained notices file was rejected because nothing would keep it in step with `Cargo.lock`, and pointing at the source tree because the archives would still lack the notices.
+:::
+
+:::mara decision ADR-NPM-DISTRIBUTION
+:mid: 01M81JCJFBWY36PNAJD0Y3B125
+:title: Distribute zban on npm as platform binary packages and adopt Nx with nx-rust for releases
+:status: accepted
+:justifies: DES-SHARED-CORE
+
+[[ADR-RUST-BINARY]] limited v1 distribution to GitHub Releases and deferred package-manager wrappers pending a recorded decision. In practice, developers and coding-agent setups benefit from installing or running zban through npm and `npx` without manually fetching release archives or installing a Rust toolchain ([[NEED-NPM-DISTRIBUTION]]).
+
+zban is therefore distributed on npm alongside GitHub Releases as five packages under the `@convesoft` scope:
+
+- `@convesoft/zban`: the main dispatcher package containing `bin/zban.cjs`, `README.md`, `LICENSE-MIT`, `LICENSE-APACHE` and `optionalDependencies` pinning all four platform packages to the exact release version.
+- `@convesoft/zban-linux-x64` (`x86_64-unknown-linux-musl`, `os: ["linux"]`, `cpu: ["x64"]`),
+- `@convesoft/zban-linux-arm64` (`aarch64-unknown-linux-musl`, `os: ["linux"]`, `cpu: ["arm64"]`),
+- `@convesoft/zban-darwin-arm64` (`aarch64-apple-darwin`, `os: ["darwin"]`, `cpu: ["arm64"]`), and
+- `@convesoft/zban-darwin-x64` (`x86_64-apple-darwin`, `os: ["darwin"]`, `cpu: ["x64"]`).
+
+Each platform package holds `bin/zban`, `README.md`, `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-LICENSES`. Because the Linux binaries are statically linked against musl ([[ADR-RUST-BINARY]]), the Linux packages run on both glibc and musl distributions and set no `libc` restriction.
+
+The repository adopts Nx with `@convesoft/nx-rust` at the root (`package.json`, `pnpm-lock.yaml`, `nx.json`) for release versioning and changelog generation, while keeping `Cargo.toml` as the single source of truth for the version:
+
+- `pnpm nx release version` bumps `Cargo.toml` and `Cargo.lock` from Conventional Commits (or an explicit specifier) in a release pull request so that `zban --version`, `cargo install --locked --git ... --tag vX.Y.Z`, GitHub Release archives and all five npm packages stay on one version.
+- `scripts/package-npm.mjs` reads metadata and the version directly from `Cargo.toml` to assemble the main and platform npm packages.
+- `.github/workflows/release.yml` runs via `workflow_dispatch` (with `dist_tag` and `dry_run`, defaulting to `dry_run: true`), builds and tests all four targets, generates `THIRD-PARTY-LICENSES`, packs both the `.tar.gz` archives and the npm `.tgz` packages, and runs a local pre-publish npm install smoke test on each runner.
+- Publishing runs in the `npm` GitHub Environment via npm OIDC Trusted Publishing (`id-token: write`, `--provenance`, no long-lived npm token): it publishes the four platform packages first (skipping any whose registry `dist.shasum` already matches), waits until `npm view` reports all four, publishes `@convesoft/zban` last, runs an `npx` smoke test, runs `pnpm nx release changelog` to create the `vX.Y.Z` tag and GitHub Release from Conventional Commits, and uploads the four `.tar.gz` archives and `SHA256SUMS` to that release.
+
+Rejected alternatives:
+
+- **A single npm package with a `postinstall` script downloading from GitHub Releases.** Breaks when `--ignore-scripts` is enabled, needs network access during installation and reimplements checksum verification.
+- **Tag-only version stamping in CI without bumping `Cargo.toml` in git.** Leaves the tagged commit with a stale `Cargo.toml` version, breaking `cargo install --locked --git ... --tag vX.Y.Z`.
+- **Publishing to crates.io instead of npm.** Does not help Node-based agent setups (`npx`) without a Rust toolchain, and zban remains an application rather than a library crate.
+
+Costs accepted: the repository carries a minimal Node/pnpm/Nx root configuration alongside the Rust crate, and all five `@convesoft/zban*` packages require one-time Trusted Publisher configuration on npmjs.com bound to `convesoft/zban`, `release.yml` and the `npm` environment.
 :::
 
 :::mara decision ADR-DEPENDENCIES

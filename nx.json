@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "analytics": false,
+  "plugins": ["@convesoft/nx-rust"],
+  "targetDefaults": {
+    "@convesoft/nx-rust:cargo": {},
+    "@convesoft/nx-rust:cargo-outputs": {},
+    "@convesoft/nx-rust:run": {},
+    "@convesoft/nx-rust:lockfile": {},
+    "@convesoft/nx-rust:release-publish": {}
+  },
+  "release": {
+    "projects": ["zban"],
+    "version": {
+      "conventionalCommits": true
+    },
+    "conventionalCommits": {
+      "useCommitScope": false
+    },
+    "releaseTag": {
+      "pattern": "v{version}"
+    },
+    "changelog": {
+      "automaticFromRef": true,
+      "workspaceChangelog": {
+        "createRelease": "github",
+        "file": false
+      },
+      "projectChangelogs": false,
+      "git": {
+        "commit": false,
+        "tag": true,
+        "push": true
+      }
+    }
+  }
+}

@@ -143,6 +143,15 @@ Finished and abandoned issues stay available as context about past work, without
 Users can detect and repair inconsistent issue data introduced by hand edits, interrupted writes or merges.
 :::
 
+:::mara need NEED-NPM-DISTRIBUTION
+:mid: 01M81JC6J5RQMFZ60SKJN5XGHQ
+:title: Install and run zban through npm
+:status: accepted
+:contributes_to: GOAL-AGENT-WORKFLOW
+
+Developers and coding-agent setups can install and run zban through npm and `npx` on the supported platforms without manually downloading GitHub Release archives or compiling Rust from source.
+:::
+
 ## Vocabulary
 
 :::mara term TERM-ISSUE

@@ -1,12 +1,22 @@
-# Tests zban and builds the release binaries of ADR-RUST-BINARY. A pushed `v*`
-# tag on a commit of `main` also creates the GitHub release; pull requests that
-# change this workflow, the toolchain or the dependencies, and manual runs, only
-# test and build.
+# Tests zban, builds the release binaries (ADR-RUST-BINARY), packs the npm
+# packages (ADR-NPM-DISTRIBUTION) and publishes a release on workflow_dispatch
+# (dry_run defaults to true). Pull requests that touch release inputs only test,
+# build, pack and run the local smoke tests.
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: npm dist-tag (for example latest for stable, next for release candidates)
+        required: true
+        default: latest
+        type: string
+      dry_run:
+        description: Validate, build, pack, smoke-test and preview release without publishing or tagging
+        required: false
+        default: true
+        type: boolean
   pull_request:
     paths:
       - .github/workflows/release.yml
@@ -15,7 +25,12 @@ on:
       - Cargo.lock
       - about.toml
       - about.hbs
-  workflow_dispatch:
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - nx.json
+      - npm/**
+      - scripts/package-npm.mjs
 
 permissions:
   contents: read
@@ -28,8 +43,103 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  prepare:
+    name: Prepare release metadata and main npm package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      dist_tag: ${{ steps.meta.outputs.dist_tag }}
+    steps:
+      - name: Check branch and inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          DIST_TAG: ${{ inputs.dist_tag }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main | refs/heads/release/*) ;;
+            *)
+              echo "::error::Release must run from main or a release/* branch (got $GITHUB_REF)."
+              exit 1
+              ;;
+          esac
+
+          if ! [[ "$DIST_TAG" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "::error::Invalid npm dist-tag: $DIST_TAG"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - run: rustup toolchain install
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Read and validate version from Cargo.toml
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DIST_TAG: ${{ inputs.dist_tag || 'latest' }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+          if ! [[ "$version" =~ $semver_re ]] || [ "$version" = "0.0.0" ]; then
+            echo "::error::Invalid version in Cargo.toml: $version"
+            exit 1
+          fi
+          tag="v$version"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+              echo "::error::Git tag $tag already exists. Bump Cargo.toml with pnpm nx release version first."
+              exit 1
+            fi
+            if npm view "@convesoft/zban@$version" version > /dev/null 2>&1; then
+              echo "::error::@convesoft/zban@$version is already published on npm."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "sha=$sha"
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "dist_tag=$DIST_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Pack main npm package (@convesoft/zban)
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dist"
+          pkg_dir=$(node scripts/package-npm.mjs main "$RUNNER_TEMP/npm-stage")
+          npm pack "$pkg_dir" --pack-destination "$RUNNER_TEMP/dist"
+          tarball="$RUNNER_TEMP/dist/convesoft-zban-$VERSION.tgz"
+          test -f "$tarball"
+          for required in package/package.json package/bin/zban.cjs package/README.md package/LICENSE-MIT package/LICENSE-APACHE; do
+            tar -tzf "$tarball" | grep -Fx "$required"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zban-npm-main
+          path: ${{ runner.temp }}/dist/convesoft-zban-*.tgz
+          if-no-files-found: error
+
   build:
     name: Build (${{ join(matrix.targets, ', ') }})
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -40,37 +150,26 @@ jobs:
           # builds both macOS targets, cross-compiling for x86_64.
           - os: ubuntu-24.04
             targets: [x86_64-unknown-linux-musl]
+            native_npm_pkg: convesoft-zban-linux-x64
           - os: ubuntu-24.04-arm
             targets: [aarch64-unknown-linux-musl]
+            native_npm_pkg: convesoft-zban-linux-arm64
           - os: macos-15
             targets: [aarch64-apple-darwin, x86_64-apple-darwin]
+            native_npm_pkg: convesoft-zban-darwin-arm64
     runs-on: ${{ matrix.os }}
     env:
       TARGETS: ${{ join(matrix.targets, ' ') }}
     steps:
       - uses: actions/checkout@v7
         with:
-          # Full history, so that a tag run can check that its commit is on main.
-          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
       # Installs the toolchain that rust-toolchain.toml pins, with all four
       # release targets (ADR-RUST-BINARY).
       - run: rustup toolchain install
-      - name: Check that the tag names the package version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
-            exit 1
-          fi
-      - name: Check that the tagged commit is on main
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          git fetch --no-tags origin main
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "::error::Tag $GITHUB_REF_NAME points at $(git rev-parse HEAD), which is not on main"
-            exit 1
-          fi
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
       - name: Build
         run: |
           for target in $TARGETS; do
@@ -105,17 +204,16 @@ jobs:
               "$zban" create "Smoke test" --type task --body "- [ ] Run zban"
               id=$(basename .zban/*.md .md)
               "$zban" list | grep -F "$id"
-              "$zban" update "$id" --replace-old "- [ ] Run zban" --replace-new "- [x] Run zban" --status done
+              "$zban" update "$id" --replace-old "- [ ] Run zban" --replace-new "- [x] Run zban" --status "done"
               test -f ".zban/archive/$id.md"
-              "$zban" list --status done | grep -F "$id"
+              "$zban" list --status "done" | grep -F "$id"
               "$zban" check
             )
           done
       # Writes the licenses of the crates compiled into zban for each target,
       # from about.toml and about.hbs, into the directory its archive is packed
-      # from. cargo-about is not cached: a tag run cannot restore the caches of
-      # pull request runs, and a release should not ship notices written by a
-      # binary restored from a cache.
+      # from. cargo-about is not cached: a release should not ship notices
+      # written by a binary restored from a cache.
       - name: Write the third-party licenses
         shell: bash
         run: |
@@ -131,44 +229,254 @@ jobs:
               exit 1
             fi
           done
-      - name: Package
+      - name: Package release archives and platform npm packages
+        shell: bash
         env:
           # Keeps macOS tar from adding AppleDouble `._` files.
           COPYFILE_DISABLE: 1
         run: |
-          mkdir dist
+          set -euo pipefail
+          mkdir -p dist
           for target in $TARGETS; do
             staging="$RUNNER_TEMP/zban-$target"
             cp "target/$target/release/zban" README.md LICENSE-MIT LICENSE-APACHE "$staging"
             tar -czf "dist/zban-$target.tar.gz" -C "$staging" zban README.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES
             tar -tzf "dist/zban-$target.tar.gz" | grep -Fx THIRD-PARTY-LICENSES
+
+            pkg_dir=$(node scripts/package-npm.mjs platform "$target" "target/$target/release/zban" "$staging/THIRD-PARTY-LICENSES" "$RUNNER_TEMP/npm-stage")
+            npm pack "$pkg_dir" --pack-destination dist
           done
+      - uses: actions/download-artifact@v8
+        with:
+          name: zban-npm-main
+          path: ${{ runner.temp }}/npm-main
+      - name: Smoke-test packed npm packages locally
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          NATIVE_NPM_PKG: ${{ matrix.native_npm_pkg }}
+        run: |
+          set -euo pipefail
+          smoke="$RUNNER_TEMP/npm-smoke"
+          mkdir -p "$smoke/install" "$smoke/work"
+          platform_tgz="$GITHUB_WORKSPACE/dist/$NATIVE_NPM_PKG-$VERSION.tgz"
+          main_tgz="$RUNNER_TEMP/npm-main/convesoft-zban-$VERSION.tgz"
+          test -f "$platform_tgz"
+          test -f "$main_tgz"
+          (
+            cd "$smoke/install"
+            npm init -y > /dev/null
+            # Install platform package first, then unpack the dispatcher without
+            # consulting the registry for unpublished optionalDependencies.
+            npm install --no-audit --no-fund --ignore-scripts --omit=optional "$main_tgz"
+            npm install --no-audit --no-fund --ignore-scripts "$platform_tgz"
+          )
+          (
+            cd "$smoke/work"
+            "$smoke/install/node_modules/.bin/zban" --version | grep -Fx "zban $VERSION"
+            "$smoke/install/node_modules/.bin/zban" init
+            "$smoke/install/node_modules/.bin/zban" check
+          )
       - uses: actions/upload-artifact@v7
         with:
           name: zban-${{ matrix.os }}
-          path: dist/zban-*.tar.gz
+          path: |
+            dist/zban-*.tar.gz
+            dist/convesoft-zban-*.tgz
           if-no-files-found: error
 
-  release:
-    name: Create the GitHub release
-    needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+  publish:
+    name: Publish to npm and create GitHub Release
+    needs: [prepare, build]
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@convesoft/zban/v/${{ needs.prepare.outputs.version }}
     permissions:
       contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      # nx-rust asks Cargo for the workspace graph when nx release changelog runs.
+      - run: rustup toolchain install
+
+      - uses: pnpm/action-setup@v6
+      # Omit `registry-url` so setup-node does not write a NODE_AUTH_TOKEN line
+      # into `.npmrc`, which would interfere with npm OIDC Trusted Publishing.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
       - uses: actions/download-artifact@v8
         with:
           pattern: zban-*
           path: dist
           merge-multiple: true
-      - name: Write checksums
-        working-directory: dist
-        run: sha256sum zban-*.tar.gz > SHA256SUMS && cat SHA256SUMS
-      - name: Create the release
+
+      - name: Verify artifact inventory and write checksums
+        run: |
+          set -euo pipefail
+          for target in \
+            x86_64-unknown-linux-musl \
+            aarch64-unknown-linux-musl \
+            aarch64-apple-darwin \
+            x86_64-apple-darwin
+          do
+            test -f "dist/zban-$target.tar.gz"
+          done
+          for pkg in \
+            convesoft-zban \
+            convesoft-zban-linux-x64 \
+            convesoft-zban-linux-arm64 \
+            convesoft-zban-darwin-arm64 \
+            convesoft-zban-darwin-x64
+          do
+            test -f "dist/$pkg-$VERSION.tgz"
+          done
+          (cd dist && sha256sum zban-*.tar.gz > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Publish to npm (dry run)
+        if: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          npm --version
+          for pkg in \
+            convesoft-zban-linux-x64 \
+            convesoft-zban-linux-arm64 \
+            convesoft-zban-darwin-arm64 \
+            convesoft-zban-darwin-x64 \
+            convesoft-zban
+          do
+            npm publish "dist/$pkg-$VERSION.tgz" --dry-run --access public --tag "$DIST_TAG"
+          done
+
+      - name: Preview GitHub Release notes (dry run)
+        if: ${{ inputs.dry_run }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pnpm nx release changelog "$VERSION" --dry-run
+
+      - name: Publish platform npm packages via OIDC Trusted Publishing
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          npm --version
+
+          publish_or_verify() {
+            local package_name=$1
+            local tarball=$2
+            local expected actual
+            expected=$(sha1sum "$tarball" | cut -d ' ' -f 1)
+            if actual=$(npm view "$package_name@$VERSION" dist.shasum --json 2>/dev/null \
+              | tr -d '"[:space:]'); then
+              if [ "$actual" != "$expected" ]; then
+                echo "::error::$package_name@$VERSION already exists on npm with a different shasum ($actual != $expected)"
+                exit 1
+              fi
+              echo "$package_name@$VERSION already matches $expected"
+            else
+              npm publish "$tarball" --access public --provenance --tag "$DIST_TAG"
+            fi
+          }
+
+          for package_name in \
+            @convesoft/zban-linux-x64 \
+            @convesoft/zban-linux-arm64 \
+            @convesoft/zban-darwin-arm64 \
+            @convesoft/zban-darwin-x64
+          do
+            slug=${package_name#@convesoft/}
+            publish_or_verify "$package_name" "dist/convesoft-$slug-$VERSION.tgz"
+          done
+
+      - name: Wait for platform npm packages to become visible
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            missing=0
+            for package_name in \
+              @convesoft/zban-linux-x64 \
+              @convesoft/zban-linux-arm64 \
+              @convesoft/zban-darwin-arm64 \
+              @convesoft/zban-darwin-x64
+            do
+              npm view "$package_name@$VERSION" version > /dev/null 2>&1 || missing=1
+            done
+            if [ "$missing" -eq 0 ]; then
+              exit 0
+            fi
+            echo "Platform packages still propagating on npm (attempt $attempt/60)"
+            sleep 30
+          done
+          echo "::error::Platform packages did not become visible on npm within 30 minutes"
+          exit 1
+
+      - name: Publish main npm package (@convesoft/zban) via OIDC Trusted Publishing
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          tarball="dist/convesoft-zban-$VERSION.tgz"
+          expected=$(sha1sum "$tarball" | cut -d ' ' -f 1)
+          if actual=$(npm view "@convesoft/zban@$VERSION" dist.shasum --json 2>/dev/null \
+            | tr -d '"[:space:]'); then
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::@convesoft/zban@$VERSION already exists on npm with a different shasum ($actual != $expected)"
+              exit 1
+            fi
+            echo "@convesoft/zban@$VERSION already matches $expected"
+          else
+            npm publish "$tarball" --access public --provenance --tag "$DIST_TAG"
+          fi
+
+      - name: Public npm registry smoke test
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if npm view "@convesoft/zban@$VERSION" version > /dev/null 2>&1; then
+              tmp=$(mktemp -d)
+              trap 'rm -rf -- "$tmp"' EXIT
+              (
+                cd "$tmp"
+                npx --yes "@convesoft/zban@$VERSION" --version | grep -Fx "zban $VERSION"
+              )
+              exit 0
+            fi
+            echo "@convesoft/zban@$VERSION still propagating on npm (attempt $attempt/60)"
+            sleep 30
+          done
+          echo "::error::@convesoft/zban@$VERSION did not become visible on npm within 30 minutes"
+          exit 1
+
+      - name: Create git tag and GitHub Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          pnpm nx release changelog "$VERSION" --git-push-args="refs/tags/$TAG"
+
+      - name: Upload release archives and checksums to GitHub Release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME" dist/*
-          --repo "$GITHUB_REPOSITORY" --verify-tag
-          --title "zban $GITHUB_REF_NAME" --generate-notes
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" dist/zban-*.tar.gz dist/SHA256SUMS --clobber

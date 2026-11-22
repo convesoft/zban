@@ -1,0 +1,4 @@
+allowBuilds:
+  nx: true
+minimumReleaseAgeExclude:
+  - '@convesoft/nx-rust@1.0.0-rc.1'

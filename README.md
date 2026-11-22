@@ -4,8 +4,9 @@
 Markdown files in your repository, managed through a CLI and an MCP server.
 
 > **Status:** the v1 specification is agreed and implemented. Releases are
-> published on [GitHub Releases](https://github.com/convesoft/zban/releases), and
-> progress is tracked in [`.zban/`](.zban/).
+> published on [npm](https://www.npmjs.com/package/@convesoft/zban) and
+> [GitHub Releases](https://github.com/convesoft/zban/releases), and progress is
+> tracked in [`.zban/`](.zban/).
 
 ## Why
 
@@ -44,9 +45,28 @@ created_at: 2026-11-11T20:00:00Z
 
 ## Installation
 
-zban runs on Linux and macOS, on x86_64 and aarch64. It is distributed only
-through [GitHub Releases](https://github.com/convesoft/zban/releases), not through
-crates.io or other package managers.
+zban runs on Linux and macOS, on x86_64 and aarch64. It is distributed through
+[npm](https://www.npmjs.com/package/@convesoft/zban) and
+[GitHub Releases](https://github.com/convesoft/zban/releases), not through
+crates.io.
+
+### npm
+
+Install globally with npm (or pnpm), or run directly with `npx`:
+
+```sh
+npm install -g @convesoft/zban
+zban --version
+```
+
+or without a global install:
+
+```sh
+npx @convesoft/zban --version
+```
+
+`@convesoft/zban` installs only the native binary package for your platform via
+`optionalDependencies`, with no postinstall script.
 
 ### Prebuilt binary
 
@@ -135,11 +155,20 @@ cargo +1.89 test --locked   # the rust-version in Cargo.toml
 mara schema validate && mara project validate
 ```
 
-Pushing a tag `vX.Y.Z` that matches the version in `Cargo.toml` on a commit of
-`main` runs [`release.yml`](.github/workflows/release.yml), which runs the
-tests, builds the binaries and creates the GitHub release. A tag that names
-another version or a commit outside `main` fails the run, and no release is
-created.
+To cut a release, bump `Cargo.toml` and `Cargo.lock` with Nx release in a
+release pull request and merge it to `main`, then dispatch
+[`release.yml`](.github/workflows/release.yml) (defaulting to `dry_run: true`):
+
+```sh
+pnpm install
+pnpm nx release version
+```
+
+The workflow runs the tests, builds the four targets, packs the release archives
+and npm packages, runs local smoke tests, publishes `@convesoft/zban` and its
+four platform packages to npm via OIDC Trusted Publishing, creates the `vX.Y.Z`
+tag and GitHub Release from Conventional Commits via `pnpm nx release changelog`,
+and attaches the release archives and `SHA256SUMS`.
 
 ## License
 

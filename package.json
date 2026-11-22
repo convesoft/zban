@@ -1,0 +1,14 @@
+{
+  "name": "zban",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "devDependencies": {
+    "@convesoft/nx-rust": "1.0.0-rc.1",
+    "nx": "24.0.6"
+  },
+  "packageManager": "pnpm@12.21.0",
+  "nx": {
+    "includedScripts": []
+  }
+}
