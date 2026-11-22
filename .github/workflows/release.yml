@@ -128,8 +128,10 @@ jobs:
           tarball="$RUNNER_TEMP/dist/convesoft-zban-$VERSION.tgz"
           test -f "$tarball"
           # The package also holds every file of docs/, as it is (ADR-NPM-DISTRIBUTION).
+          # Listing every entry that is not a directory makes a page that npm pack
+          # leaves out, such as a symlink, fail this step by name.
           listing=$(tar -tzf "$tarball")
-          mapfile -t docs < <(find docs -type f | LC_ALL=C sort)
+          mapfile -t docs < <(find docs ! -type d | LC_ALL=C sort)
           for required in package/package.json package/bin/zban.cjs package/README.md package/LICENSE-MIT package/LICENSE-APACHE package/docs/index.mara.md "${docs[@]/#/package/}"; do
             if ! grep -Fxq -- "$required" <<< "$listing"; then
               echo "::error::$required is missing from @convesoft/zban"
