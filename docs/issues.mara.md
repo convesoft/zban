@@ -380,7 +380,7 @@ Any status can change to any other status; zban enforces no workflow beyond thes
 :status: accepted
 :satisfies: REQ-CHECK
 
-`zban check` reports findings ordered by path, then code. In JSON each finding is `{severity, code, path, message}`; human output prints one line per finding.
+`zban check` reports findings ordered by path, then code. In JSON each finding is `{severity, code, path, message}`; human output prints one line per finding, or `No problems found.` when there are none, so a clean run is visibly distinct from no output. JSON output and the exit status are the same either way.
 
 | Code | Severity | Finding |
 | --- | --- | --- |
