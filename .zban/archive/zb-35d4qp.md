@@ -35,4 +35,11 @@ Keep the `not_found` error code unchanged (`DES-CLI`) and add a brief hint to th
 
 ## Decisions made
 
-- Only a well-formed ID that names no issue gets the hint (recorded in `DES-CLI`). A value that cannot be an ID keeps its own message showing the ID format, because it cannot exist on another branch either. A relation naming an unknown issue fails with `invalid_reference`, not `not_found`, and stays unchanged.
+- Only an ID in this project's format, with its prefix, that names no issue gets the hint (recorded in `DES-CLI`); an ID with another project's prefix gets the ID-format message. A value that cannot be an ID keeps its own message showing the ID format, because it cannot exist on another branch either. Adding a relation that names an unknown issue fails with `invalid_reference`, not `not_found`, and stays unchanged.
+
+## Review follow-up
+
+- `tests/cli.rs` now checks that the message for a malformed ID, in human and JSON output, has no hint and does show the ID format.
+- The `not_found` row of `DES-CLI` now says which values get the hint: IDs in this project's format, with its prefix. `VER-CLI` uses the same wording.
+- The decision entry above now says that adding a relation that names an unknown issue fails with `invalid_reference`.
+- Checks rerun: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `mara schema validate`, `mara project validate --format json` and `zban check`.

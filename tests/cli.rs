@@ -411,15 +411,19 @@ fn failures_print_an_error_object_and_exit_with_status_1() {
         "{}",
         stderr(&output)
     );
-    // Only a well-formed ID gets the hint; others learn the ID format.
+    // Only an ID in this project's format gets the hint; any other value
+    // learns the ID format instead, in human and JSON output.
     for (id, hinted) in [("zb-000000", true), ("nonsense", false)] {
         let (_, value) = run_json(&root, &["show", id]);
-        let message = value["error"]["message"].as_str().unwrap();
-        assert_eq!(
-            message.contains("another branch or worktree"),
-            hinted,
-            "{value}"
-        );
+        let human = stderr(&zban(&root, &["show", id]));
+        for message in [value["error"]["message"].as_str().unwrap(), &human] {
+            assert_eq!(
+                message.contains("another branch or worktree"),
+                hinted,
+                "{message}"
+            );
+            assert_eq!(message.contains("IDs look like"), !hinted, "{message}");
+        }
     }
     assert_eq!(snapshot(&root.join(".zban"), &[]), before);
 }
