@@ -219,7 +219,7 @@ impl Server {
             statuses: args.status,
             types: args.issue_type,
             priorities: args.priority,
-            tags: args.tag,
+            tags: args.tags,
             parent: args.parent,
             ready: args.ready,
             search: args.search,
@@ -242,7 +242,7 @@ impl Server {
             issue_type: args.issue_type,
             status: args.status,
             priority: args.priority,
-            tags: args.tag,
+            tags: args.tags,
             parent: args.parent,
             blocked_by: args.blocked_by,
             related: args.related,
@@ -296,8 +296,9 @@ impl Server {
 }
 
 // The argument types. Each mirrors the options of its command, with list
-// values for repeatable options and `true` for flags (`REQ-MCP-STDIO`).
-// Every tool also takes `directory`.
+// values for repeatable options and `true` for flags (`REQ-MCP-STDIO`), except
+// that `--tag` is `tags`, like the issue field (`DES-MCP-TOOLS`). Every tool
+// also takes `directory`.
 
 /// Repeated values of one filter match any of them; different filters must
 /// all match.
@@ -319,7 +320,7 @@ struct ListArgs {
     #[serde(default)]
     priority: Vec<String>,
     #[serde(default)]
-    tag: Vec<String>,
+    tags: Vec<String>,
     /// Direct children of this issue.
     parent: Option<String>,
     /// Issues that can be started now.
@@ -360,7 +361,7 @@ struct CreateArgs {
     /// critical, high, normal, low or deferred [default: normal]
     priority: Option<String>,
     #[serde(default)]
-    tag: Vec<String>,
+    tags: Vec<String>,
     parent: Option<String>,
     #[serde(default)]
     blocked_by: Vec<String>,

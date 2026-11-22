@@ -561,6 +561,7 @@ fn guide_lists_every_option_of_each_command() {
 
         // The tool takes the same options as parameters, named with
         // underscores, besides `directory` and the positional arguments.
+        // `--tag` is `tags`, like the issue field (`DES-MCP-TOOLS`).
         let (tool, schema) = schemas
             .iter()
             .find(|(tool, _)| tool.split('_').next() == Some(command.as_str()))
@@ -569,7 +570,10 @@ fn guide_lists_every_option_of_each_command() {
             .as_object()
             .unwrap()
             .keys()
-            .map(|name| format!("--{}", name.replace('_', "-")))
+            .map(|name| match name.as_str() {
+                "tags" => "--tag".to_owned(),
+                name => format!("--{}", name.replace('_', "-")),
+            })
             .collect();
         let unlisted: Vec<_> = parameters.difference(&listed).collect();
         assert!(listed.is_subset(&parameters), "`{tool}` lacks options");
