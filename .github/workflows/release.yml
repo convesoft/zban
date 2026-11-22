@@ -369,7 +369,7 @@ jobs:
             convesoft-zban-darwin-x64 \
             convesoft-zban
           do
-            npm publish "dist/$pkg-$VERSION.tgz" --dry-run --access public --tag "$DIST_TAG"
+            npm publish "./dist/$pkg-$VERSION.tgz" --dry-run --access public --tag "$DIST_TAG"
           done
 
       - name: Preview GitHub Release notes (dry run)
@@ -408,7 +408,7 @@ jobs:
             @convesoft/zban-darwin-x64
           do
             slug=${package_name#@convesoft/}
-            publish_or_verify "$package_name" "dist/convesoft-$slug-$VERSION.tgz"
+            publish_or_verify "$package_name" "./dist/convesoft-$slug-$VERSION.tgz"
           done
 
       - name: Wait for platform npm packages to become visible
@@ -438,7 +438,7 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
-          tarball="dist/convesoft-zban-$VERSION.tgz"
+          tarball="./dist/convesoft-zban-$VERSION.tgz"
           expected=$(sha1sum "$tarball" | cut -d ' ' -f 1)
           if actual=$(npm view "@convesoft/zban@$VERSION" dist.shasum --json 2>/dev/null \
             | tr -d '"[:space:]'); then
