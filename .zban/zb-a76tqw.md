@@ -1,6 +1,6 @@
 ---
 title: Print a success line from zban check when no problems are found
-status: todo
+status: in-progress
 type: feature
 priority: high
 tags:
