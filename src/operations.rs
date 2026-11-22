@@ -20,7 +20,7 @@ use crate::id::{Id, Prefix};
 use crate::issue::{Issue, IssueType, Priority, Severity, Status};
 use crate::lifecycle::{self, Checklist};
 use crate::markdown::{joined, stored};
-use crate::relations::{Entry, Graph, IssueRef, NotReady};
+use crate::relations::{ChildCounts, Entry, Graph, IssueRef, NotReady};
 use crate::store::{IssueFile, Project};
 use crate::timestamp::Timestamp;
 
@@ -56,6 +56,8 @@ pub struct IssueView {
     /// The absolute path of the issue file.
     pub path: String,
     pub checklist: Checklist,
+    /// Direct children only, as `list --parent` selects them.
+    pub child_counts: ChildCounts,
     pub ready: bool,
     /// Every reason from `DES-READINESS`; empty exactly when `ready`.
     pub not_ready: Vec<NotReady>,
@@ -435,6 +437,7 @@ impl IssueView {
             closed_at: issue.closed_at.clone(),
             path: path.display().to_string(),
             checklist: issue.checklist(),
+            child_counts: graph.child_counts(id),
             ready: not_ready.is_empty(),
             not_ready,
         }

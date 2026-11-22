@@ -9,7 +9,7 @@ use std::process::{Command, Output};
 use common::{
     racing_updates, snapshot, stderr, stdout, temp_dir, write_files, zban, zban_with_input,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 use zban::ErrorCode;
 
@@ -31,6 +31,7 @@ const ISSUE_KEYS: &[&str] = &[
     "closed_at",
     "path",
     "checklist",
+    "child_counts",
     "ready",
     "not_ready",
 ];
@@ -1187,6 +1188,47 @@ fn broken_files_do_not_stop_work_on_other_issues() {
         "unreadable"
     );
     assert_eq!(snapshot(&root.join(".zban"), &[]), before);
+}
+
+// @mara implements VER-CLI
+#[test]
+fn child_counts_count_direct_children_only() {
+    let (_dir, root) = fixture();
+    let counts = |document: &Value, id: &str| {
+        let issues = document["issues"].as_array().unwrap();
+        let issue = issues.iter().find(|issue| issue["id"] == id).unwrap();
+        issue["child_counts"].clone()
+    };
+    let listed = ok(&root, &["list", "--all"]);
+    // E's grandchild D counts only for its parent A; the archived F counts.
+    assert_eq!(counts(&listed, E), json!({"closed": 1, "total": 3}));
+    assert_eq!(counts(&listed, A), json!({"closed": 0, "total": 1}));
+    assert_eq!(counts(&listed, D), json!({"closed": 0, "total": 0}));
+    let shown = ok(&root, &["show", E, D]);
+    assert_eq!(counts(&shown, E), json!({"closed": 1, "total": 3}));
+    assert_eq!(counts(&shown, D), json!({"closed": 0, "total": 0}));
+    assert_eq!(shown["issues"][0]["children"], json!([B, A, F]));
+
+    // Mutations return the counts, which follow the children's statuses.
+    let closed = ok(&root, &["update", B, "-s", "done"]);
+    assert_eq!(closed["child_counts"], json!({"closed": 0, "total": 0}));
+    let tagged = ok(&root, &["update", E, "--add-tag", "epic"]);
+    assert_eq!(tagged["child_counts"], json!({"closed": 2, "total": 3}));
+    let created = ok(&root, &["create", "Third step", "--parent", E]);
+    assert_eq!(created["child_counts"], json!({"closed": 0, "total": 0}));
+    assert_eq!(
+        counts(&ok(&root, &["list"]), E),
+        json!({"closed": 2, "total": 4})
+    );
+
+    // Human output shows child progress only for issues with children.
+    let text = stdout(&zban(&root, &["list"]));
+    let line = |id: &str| text.lines().find(|line| line.starts_with(id)).unwrap();
+    assert!(line(E).ends_with("  children 2/4 closed"), "{text}");
+    assert!(!line(D).contains("children"), "{text}");
+    let text = stdout(&zban(&root, &["show", E, D]));
+    assert!(text.contains("\nchild_counts: 2/4 closed\n"), "{text}");
+    assert_eq!(text.matches("child_counts").count(), 1, "{text}");
 }
 
 #[test]

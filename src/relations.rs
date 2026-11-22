@@ -80,12 +80,22 @@ pub struct Reverse<'a> {
     pub discovered: Vec<IssueRef<'a>>,
 }
 
+/// Progress of an issue's direct children: the same issues as the
+/// `children` that `show` lists, and how many of them are closed.
+// @mara implements DES-CLI
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct ChildCounts {
+    pub closed: usize,
+    pub total: usize,
+}
+
 /// The issues of one project load, indexed by ID.
 // @mara implements REQ-RELATIONS
 #[derive(Debug)]
 pub struct Graph<'a> {
     files: &'a [IssueFile],
     entries: HashMap<&'a Id, Entry<'a>>,
+    child_counts: HashMap<&'a Id, ChildCounts>,
 }
 
 impl<'a> Graph<'a> {
@@ -102,7 +112,25 @@ impl<'a> Graph<'a> {
                 .and_modify(|known| *known = Entry::Ambiguous)
                 .or_insert(entry);
         }
-        Self { files, entries }
+        let mut graph = Self {
+            files,
+            entries,
+            child_counts: HashMap::new(),
+        };
+        for found in graph.readable().collect::<Vec<_>>() {
+            if let Some(parent) = &found.issue.parent {
+                let counts = graph.child_counts.entry(parent).or_default();
+                counts.total += 1;
+                counts.closed += usize::from(found.issue.status.is_closed());
+            }
+        }
+        graph
+    }
+
+    /// The progress of the direct children of issue `id`.
+    // @mara implements DES-CLI
+    pub fn child_counts(&self, id: &Id) -> ChildCounts {
+        self.child_counts.get(id).copied().unwrap_or_default()
     }
 
     /// What `id` names, or `None` for an unknown ID.

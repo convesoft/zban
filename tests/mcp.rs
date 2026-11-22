@@ -405,6 +405,12 @@ fn a_draft_ancestor_holds_back_its_descendants_on_both_surfaces() {
     let sub = s.created(2);
     let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
     assert_eq!(ids(&ready), [A]);
+    // Child progress counts direct children only (`VER-CLI`).
+    let (_, shown) = s.both(&["show", &epic], "show_issues", json!({"ids": [epic]}));
+    assert_eq!(
+        shown["issues"][0]["child_counts"],
+        json!({"closed": 0, "total": 1})
+    );
 
     s.both(
         &["update", &epic, "-s", "todo"],

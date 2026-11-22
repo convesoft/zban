@@ -412,7 +412,7 @@ fn listings_report_checklist_progress() {
             .unwrap_or_else(|| panic!("{id} is listed"))
             .to_owned()
     };
-    assert!(line(&[], A).ends_with("  [1/2]"), "{}", line(&[], A));
+    assert!(line(&[], A).contains("  [1/2]"), "{}", line(&[], A));
     assert!(!line(&[], E).contains('['), "{}", line(&[], E));
 
     // Progress follows the body, also for archived issues.
@@ -442,7 +442,7 @@ fn listings_report_checklist_progress() {
     );
     assert_eq!(progress(&["--all"], A), json!({"checked": 2, "total": 3}));
     assert!(
-        line(&["--all"], A).ends_with("  [2/3]"),
+        line(&["--all"], A).contains("  [2/3]"),
         "{}",
         line(&["--all"], A)
     );
