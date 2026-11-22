@@ -50,3 +50,14 @@ Checks run: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warn
 - The MCP rendering of the guide does not mention `not_tags`; the `list_issues` schema describes it. Recorded in `DES-AGENT-GUIDE`.
 
 Follow-up: zb-32nknc (`update --remove-tag` accepts an invalid tag).
+
+## Review round 1
+
+Review of 1cc2ee2 found no P0 to P2 issues; four P3 points fixed in tests and Mara wording, with no change under `src/`:
+
+- `tests/cli.rs`: the `--not-tag` test adds H, a ready task tagged `cli`, so ready work holds an issue each exclusion keeps and one it drops (`--ready` gives A and H, `--ready --not-tag cli` gives A, `--ready --not-tag storage` gives H). It adds rows for `--status` and `--search` with `--not-tag`.
+- `tests/mcp.rs`: the parity test gives two new issues the parent E and runs its listings as a table, with new rows for `parent`, `type`, `priority` and `all` (after closing one issue) combined with `not_tags`. It also compares both projects' `.zban/` before and after the refused `tags`/`not_tags` calls.
+- `VER-CLI` names the accepted unused tag ("a valid tag that no issue carries is accepted and excludes nothing") and the added combinations; `VER-SURFACE-PARITY` names the added combinations and that a refused tag changes no file.
+- Filed zb-rby6kf: `DES-ISSUE-FILE` describes tags more loosely than the rule zban enforces.
+
+Checks rerun after merging `origin/main`: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all pass), `mara schema validate` (valid), `mara project validate --format json` (`valid: true`, `evaluation_complete: true`), `zban check` (no problems). With the exclusion disabled, both `--not-tag` tests fail.

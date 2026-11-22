@@ -438,64 +438,112 @@ fn a_draft_ancestor_holds_back_its_descendants_on_both_surfaces() {
 }
 
 /// `not_tags` leaves out the issues that `list --not-tag` leaves out, alone,
-/// repeated and combined with `tags` and `ready`, and refuses an invalid tag
-/// as the command line does. Every listing below differs from the same
-/// listing without `not_tags`.
+/// repeated and combined with `tags`, `ready`, `parent`, `type`, `priority`
+/// and `all`, and refuses an invalid tag as the command line does, without
+/// writing. Every listing with `not_tags` keeps some issues and drops others.
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn not_tags_leaves_out_what_not_tag_leaves_out() {
     let mut s = Surfaces::new();
     // Distinct priorities order the new issues alike in both projects, whose
-    // IDs differ.
-    for (title, priority, tags) in [
-        ("Maintainer chore", "critical", &["maintainer"][..]),
-        ("Slow storage test", "high", &["slow", "storage"]),
-        ("Storage fix", "normal", &["storage"]),
-        ("Storage release", "deferred", &["storage", "maintainer"]),
+    // IDs differ. Two of them are children of the epic E.
+    for (title, priority, parent, tags) in [
+        ("Maintainer chore", "critical", None, &["maintainer"][..]),
+        ("Slow storage test", "high", Some(E), &["slow", "storage"]),
+        ("Storage fix", "normal", None, &["storage"]),
+        (
+            "Storage release",
+            "deferred",
+            Some(E),
+            &["storage", "maintainer"],
+        ),
     ] {
         let mut args = vec!["create", title, "-p", priority];
+        let mut arguments = json!({"title": title, "priority": priority, "tags": tags});
+        if let Some(parent) = parent {
+            args.extend(["--parent", parent]);
+            arguments["parent"] = json!(parent);
+        }
         for tag in tags {
             args.extend(["--tag", tag]);
         }
-        s.both(
-            &args,
-            "create_issue",
-            json!({"title": title, "priority": priority, "tags": tags}),
-        );
+        s.both(&args, "create_issue", arguments);
     }
     let [chore, slow, fix, release] = [0, 1, 2, 3].map(|n| s.created(n));
     let [chore, slow, fix, release] = [&chore, &slow, &fix, &release].map(String::as_str);
-    let (_, all) = s.both(&["list"], "list_issues", json!({}));
-    assert_eq!(ids(&all), [chore, slow, B, E, fix, A, release]);
+    let listings = |closed: bool| -> Vec<(&[&str], Value, Vec<&str>)> {
+        if closed {
+            // After `chore` is closed.
+            return vec![
+                (
+                    &["--all"],
+                    json!({"all": true}),
+                    vec![chore, slow, B, E, fix, A, release],
+                ),
+                (
+                    &["--all", "--not-tag", "storage"],
+                    json!({"all": true, "not_tags": ["storage"]}),
+                    vec![chore, B, E, A],
+                ),
+                (
+                    &["--not-tag", "storage"],
+                    json!({"not_tags": ["storage"]}),
+                    vec![B, E, A],
+                ),
+            ];
+        }
+        vec![
+            (&[], json!({}), vec![chore, slow, B, E, fix, A, release]),
+            (
+                &["--not-tag", "maintainer"],
+                json!({"not_tags": ["maintainer"]}),
+                vec![slow, B, E, fix, A],
+            ),
+            (
+                &["--not-tag", "maintainer", "--not-tag", "slow"],
+                json!({"not_tags": ["maintainer", "slow"]}),
+                vec![B, E, fix, A],
+            ),
+            // `release` carries both the wanted and an excluded tag.
+            (
+                &["--tag", "storage", "--not-tag", "maintainer"],
+                json!({"tags": ["storage"], "not_tags": ["maintainer"]}),
+                vec![slow, fix],
+            ),
+            (
+                &["--ready"],
+                json!({"ready": true}),
+                vec![chore, slow, fix, A, release],
+            ),
+            (
+                &["--ready", "--not-tag", "storage"],
+                json!({"ready": true, "not_tags": ["storage"]}),
+                vec![chore, A],
+            ),
+            (&["--parent", E], json!({"parent": E}), vec![slow, release]),
+            (
+                &["--parent", E, "--not-tag", "maintainer"],
+                json!({"parent": E, "not_tags": ["maintainer"]}),
+                vec![slow],
+            ),
+            (
+                &["--type", "task", "--not-tag", "storage"],
+                json!({"type": ["task"], "not_tags": ["storage"]}),
+                vec![chore, B, A],
+            ),
+            (
+                &["-p", "critical", "-p", "high", "--not-tag", "slow"],
+                json!({"priority": ["critical", "high"], "not_tags": ["slow"]}),
+                vec![chore],
+            ),
+        ]
+    };
+    for (args, arguments, expected) in listings(false) {
+        let (_, listed) = s.both(&[&["list"], args].concat(), "list_issues", arguments);
+        assert_eq!(ids(&listed), expected, "{args:?}");
+    }
 
-    let (_, listed) = s.both(
-        &["list", "--not-tag", "maintainer"],
-        "list_issues",
-        json!({"not_tags": ["maintainer"]}),
-    );
-    assert_eq!(ids(&listed), [slow, B, E, fix, A]);
-    let (_, listed) = s.both(
-        &["list", "--not-tag", "maintainer", "--not-tag", "slow"],
-        "list_issues",
-        json!({"not_tags": ["maintainer", "slow"]}),
-    );
-    assert_eq!(ids(&listed), [B, E, fix, A]);
-    // `release` carries both the wanted and an excluded tag.
-    let (_, listed) = s.both(
-        &["list", "--tag", "storage", "--not-tag", "maintainer"],
-        "list_issues",
-        json!({"tags": ["storage"], "not_tags": ["maintainer"]}),
-    );
-    assert_eq!(ids(&listed), [slow, fix]);
-    let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
-    assert_eq!(ids(&ready), [chore, slow, fix, A, release]);
-    let (_, ready) = s.both(
-        &["list", "--ready", "--not-tag", "storage"],
-        "list_issues",
-        json!({"ready": true, "not_tags": ["storage"]}),
-    );
-    assert_eq!(ids(&ready), [chore, A]);
-
+    let before = [&s.cli, &s.mcp].map(|root| snapshot(&root.join(".zban"), &[]));
     for (args, arguments) in [
         (
             &["list", "--not-tag", "Bad Tag"][..],
@@ -510,6 +558,18 @@ fn not_tags_leaves_out_what_not_tag_leaves_out() {
         let (status, document) = s.both(args, "list_issues", arguments);
         assert_eq!(status, 1, "{args:?}");
         assert_eq!(document["error"]["code"], "invalid_value", "{args:?}");
+    }
+    let after = [&s.cli, &s.mcp].map(|root| snapshot(&root.join(".zban"), &[]));
+    assert_eq!(after, before);
+
+    s.both(
+        &["update", chore, "-s", "done"],
+        "update_issue",
+        json!({"id": chore, "status": "done"}),
+    );
+    for (args, arguments, expected) in listings(true) {
+        let (_, listed) = s.both(&[&["list"], args].concat(), "list_issues", arguments);
+        assert_eq!(ids(&listed), expected, "{args:?}");
     }
 }
 
