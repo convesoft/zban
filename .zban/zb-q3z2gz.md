@@ -1,6 +1,6 @@
 ---
 title: Bundle documentation in the @convesoft/zban npm package
-status: todo
+status: in-progress
 type: feature
 tags:
   - npm
