@@ -287,6 +287,7 @@ fn expand(tag: &str, surface: Surface) -> String {
                 NotReady::BlockedBy(id.clone()),
                 NotReady::AncestorClosed(id.clone()),
                 NotReady::AncestorBlocked(id.clone()),
+                NotReady::AncestorDraft(id.clone()),
             ])
             .replace(id.as_str(), "<id>")
         }

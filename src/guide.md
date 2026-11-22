@@ -22,6 +22,8 @@ may act on another checkout.
   files or TODO comments.
 - One outcome per issue. Group larger work under an epic with
   `{{param parent}}`, and order steps with `{{param blocked_by}}`.
+- Park planned epics, backlog and human-only work as `draft`: nothing
+  under a `draft` is ready.
 - Write bodies for a reader without this conversation: the goal, the context
   and `- [ ]` task items.
 
@@ -78,16 +80,15 @@ A handoff note lets a new session continue unfinished work.
 
 ## Reference
 
-Types: {{types}}. An epic groups other issues.
+Types: {{types}}.
 Statuses: {{statuses}}. New issues are `todo`; `done` and `cancelled` are closed.
 Priorities, highest first: {{priorities}}.
 
 Relations: `parent`, `blocked_by` (issues to close first), `related` and
-`discovered_from` (the issue in progress when this one was found). `{{show}}`
-shows both directions.
+`discovered_from`. `{{show}}` shows both directions.
 
 An issue is ready when it is `todo`, not an epic, all its blockers are closed,
-and no ancestor is closed or has an open blocker.
+and no ancestor is closed, blocked or a `draft`.
 The reasons in `not_ready` are {{not_ready}}.
 
 {{cli}}

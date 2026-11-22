@@ -376,6 +376,45 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
     assert_eq!(files(&s.cli), files(&s.mcp));
 }
 
+// @mara implements VER-RELATIONS-READY
+#[test]
+fn a_draft_ancestor_holds_back_its_descendants_on_both_surfaces() {
+    let mut s = Surfaces::new();
+    s.both(
+        &["create", "Planned epic", "-t", "epic", "-s", "draft"],
+        "create_issue",
+        json!({"title": "Planned epic", "type": "epic", "status": "draft"}),
+    );
+    let epic = s.created(0);
+    let held_back = json!([format!("ancestor_draft:{epic}")]);
+    let (_, step) = s.both(
+        &["create", "Planned step", "-p", "high", "--parent", &epic],
+        "create_issue",
+        json!({"title": "Planned step", "priority": "high", "parent": epic}),
+    );
+    assert_eq!(step["ready"], false);
+    assert_eq!(step["not_ready"], held_back);
+    let step = s.created(1);
+    // The draft holds back the whole subtree, not only its children.
+    let (_, sub) = s.both(
+        &["create", "Sub-step", "--parent", &step],
+        "create_issue",
+        json!({"title": "Sub-step", "parent": step}),
+    );
+    assert_eq!(sub["not_ready"], held_back);
+    let sub = s.created(2);
+    let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
+    assert_eq!(ids(&ready), [A]);
+
+    s.both(
+        &["update", &epic, "-s", "todo"],
+        "update_issue",
+        json!({"id": epic, "status": "todo"}),
+    );
+    let (_, ready) = s.both(&["list", "--ready"], "list_issues", json!({"ready": true}));
+    assert_eq!(ids(&ready), [step.as_str(), sub.as_str(), A]);
+}
+
 // @mara implements VER-SURFACE-PARITY
 #[test]
 fn invalid_arguments_give_the_same_error_codes() {
