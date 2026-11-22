@@ -36,5 +36,12 @@ Checks run: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warn
 
 ## Decisions made
 
-- `VER-AGENT-GUIDE` is unchanged: its wording (every command or tool the guide names exists) still holds, the MCP guide names no parameter of these tools, and only the test's option mapping changed.
+- `VER-AGENT-GUIDE` needed no new wording. Its parity test, `guide_lists_every_option_of_each_command` in `tests/prime.rs`, does check parameter names (every MCP parameter must match a listed CLI option) and was updated to map `tags` to `--tag`; the item's criteria still hold as written, and neither rendering of the guide names the parameter in an MCP example.
 - The exception is recorded in `DES-MCP-TOOLS` rather than in a separate decision record, since it is one renamed parameter.
+
+
+## Review follow-up
+
+- The MCP parity flow in `tests/mcp.rs` now lists with `tags` and no `parent` over five open issues (the fixture's untagged `A`, `B` and epic `E`, the created child of `E` tagged `storage`, and an untagged created issue). It asserts that the result, equal to the CLI's `--tag` JSON, holds only the tagged issue, so it would fail if MCP ignored `tags`. Test-only; no change under `src/`.
+- The `VER-AGENT-GUIDE` decision above now says that the guide parity test checks parameter names and was updated.
+- Checks rerun: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `mara schema validate`, `mara project validate --format json` (`valid: true`, `evaluation_complete: true`) and `zban check`.

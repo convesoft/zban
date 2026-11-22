@@ -268,6 +268,13 @@ fn a_create_block_ready_update_close_check_flow_matches_the_cli() {
         "list_issues",
         json!({"type": ["task", "epic"], "search": "TASK"}),
     );
+    // Of the open issues, only the first created one carries the tag.
+    let (_, tagged) = s.both(
+        &["list", "--tag", "storage"],
+        "list_issues",
+        json!({"tags": ["storage"]}),
+    );
+    assert_eq!(ids(&tagged), [parse.as_str()]);
     s.both(
         &["list", "--parent", E, "--tag", "storage"],
         "list_issues",
