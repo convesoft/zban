@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { chmod, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -78,6 +78,9 @@ if (command === "main" && args.length === 1) {
   const binPath = path.join(directory, "bin/zban.cjs");
   await copyFile(path.join(root, "npm/zban.cjs"), binPath);
   await chmod(binPath, 0o755);
+  // The documentation of this version ships whole, in the main package only
+  // (ADR-NPM-DISTRIBUTION).
+  await cp(path.join(root, "docs"), path.join(directory, "docs"), { recursive: true });
   await writeManifest(directory, {
     ...manifest(name, description),
     bin: { zban: "bin/zban.cjs" },
@@ -85,7 +88,7 @@ if (command === "main" && args.length === 1) {
     optionalDependencies: Object.fromEntries(
       [...targets.values()].map(({ name: pkgName }) => [pkgName, version]),
     ),
-    files: ["bin/zban.cjs", "README.md", "LICENSE-MIT", "LICENSE-APACHE"],
+    files: ["bin/zban.cjs", "docs/", "README.md", "LICENSE-MIT", "LICENSE-APACHE"],
   });
 } else if (command === "platform" && args.length === 4) {
   const [target, binaryPath, noticesPath, output] = args;

@@ -133,6 +133,10 @@ specification:
 - [Decisions and risks](docs/decisions.mara.md)
 - [Verification](docs/verification.mara.md)
 
+The `@convesoft/zban` npm package carries these pages for its own version, in
+`node_modules/@convesoft/zban/docs/`, so agents and developers can read them
+without the repository.
+
 ## Development
 
 zban is written in Rust. The specification is maintained with
