@@ -1,6 +1,6 @@
 ---
 title: Should list --tag refuse invalid tag values, as --not-tag does?
-status: todo
+status: done
 type: task
 tags:
   - maintainer
@@ -8,6 +8,7 @@ tags:
 related:
   - zb-esx9nv
 created_at: 2026-11-22T14:04:27Z
+closed_at: 2026-11-22T14:19:47Z
 ---
 
 A question for the maintainer from the orchestrator of milestone zb-v90b0k. Nothing waits on the answer: the recommendation below stands until it is answered, and it can be undone.
@@ -28,4 +29,10 @@ Drop the `check_tag` call for `tags` in `list` (`src/operations.rs`), restore th
 
 ## Done when
 
-- [ ] The maintainer has chosen an option, the answer is recorded here and in zb-r2nnaz, and any change it needs is filed
+- [x] The maintainer has chosen an option, the answer is recorded here and in zb-r2nnaz, and any change it needs is filed
+
+## Summary of Changes
+
+The maintainer answered on 2026-11-22: option 1. An invalid tag value is refused with `invalid_value` in both `--tag`/`tags` and `--not-tag`/`not_tags`. That is what pull request #57 (zb-esx9nv) already merged, so no change is needed. The answer is recorded in zb-r2nnaz, under the decisions of zb-esx9nv.
+
+Checks run: `zban check` (no problems). No code or Mara item changed.
