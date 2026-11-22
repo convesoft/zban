@@ -1,6 +1,6 @@
 ---
 title: Make draft ancestors hold back descendants in readiness
-status: todo
+status: in-progress
 type: feature
 priority: high
 tags:
