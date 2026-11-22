@@ -36,4 +36,11 @@ A `draft` ancestor now holds back every descendant in readiness, with one `ances
 - An `in-progress` ancestor still holds nothing back, because its children carry its work (`ADR-DRAFT-HOLDS-DESCENDANTS`).
 - The guide's parking line sits in "Track work in zban", and the readiness rule in "Reference" names `draft` ancestors (`DES-AGENT-GUIDE`). Two redundant phrases were cut to fit the budget (see above).
 
-Checks run: `mara schema validate` (valid), `mara project validate` (`valid: true`, evaluation complete, 20 of 20 policy checks passed), `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all suites pass) and `zban check` (no findings).
+Checks run: `mara schema validate` (valid), `mara project validate` (`valid: true`, evaluation complete), `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all suites pass) and `zban check` (no findings).
+
+## Review follow-up
+
+- `DES-READINESS` now states the order of the reasons: the order listed, with the ancestors of one `ancestor_` reason nearest first. The code already emits them in that order.
+- `ADR-DRAFT-HOLDS-DESCENDANTS` and the "Ready work" text in `docs/issues.mara.md` now say that a planned epic leaves `draft` when its work may start. They also say that an ancestor's status `in-progress` does not by itself hold descendants back, although an open blocker on that ancestor still does, which matches `DES-READINESS`. `src/guide.md` already states both correctly and is unchanged.
+- Filed zb-t2h8tb (backlog) for an older gap: `DES-AGENT-GUIDE` says the CLI guide lists every command, but it deliberately leaves out the setup commands.
+- Merged `origin/main` with no conflicts, then reran `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (all suites pass), `mara schema validate` (valid), `mara project validate` (`valid: true`, evaluation complete) and `zban check` (no findings).
