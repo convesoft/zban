@@ -1209,26 +1209,85 @@ fn child_counts_count_direct_children_only() {
     assert_eq!(counts(&shown, D), json!({"closed": 0, "total": 0}));
     assert_eq!(shown["issues"][0]["children"], json!([B, A, F]));
 
-    // Mutations return the counts, which follow the children's statuses.
+    // Mutations return the counts, which follow the children's statuses:
+    // `done` and `cancelled` children both count as closed, archived or not.
+    let moved = ok(&root, &["update", G, "--parent", E]);
+    assert_eq!(moved["child_counts"], json!({"closed": 0, "total": 0}));
     let closed = ok(&root, &["update", B, "-s", "done"]);
     assert_eq!(closed["child_counts"], json!({"closed": 0, "total": 0}));
     let tagged = ok(&root, &["update", E, "--add-tag", "epic"]);
-    assert_eq!(tagged["child_counts"], json!({"closed": 2, "total": 3}));
-    let created = ok(&root, &["create", "Third step", "--parent", E]);
+    assert_eq!(tagged["child_counts"], json!({"closed": 3, "total": 4}));
+
+    // An epic under an epic: each counts its direct children only.
+    let sub_epic = ok(&root, &["create", "Sub epic", "-t", "epic", "--parent", E]);
+    let sub_epic = sub_epic["id"].as_str().unwrap();
+    let created = ok(&root, &["create", "Sub step", "--parent", sub_epic]);
     assert_eq!(created["child_counts"], json!({"closed": 0, "total": 0}));
-    assert_eq!(
-        counts(&ok(&root, &["list"]), E),
-        json!({"closed": 2, "total": 4})
-    );
+    let listed = ok(&root, &["list"]);
+    assert_eq!(counts(&listed, E), json!({"closed": 3, "total": 5}));
+    assert_eq!(counts(&listed, sub_epic), json!({"closed": 0, "total": 1}));
+
+    // A reparented child leaves its old parent's counts for its new one's.
+    ok(&root, &["update", D, "--parent", E]);
+    let listed = ok(&root, &["list"]);
+    assert_eq!(counts(&listed, A), json!({"closed": 0, "total": 0}));
+    assert_eq!(counts(&listed, E), json!({"closed": 3, "total": 6}));
 
     // Human output shows child progress only for issues with children.
     let text = stdout(&zban(&root, &["list"]));
     let line = |id: &str| text.lines().find(|line| line.starts_with(id)).unwrap();
-    assert!(line(E).ends_with("  children 2/4 closed"), "{text}");
-    assert!(!line(D).contains("children"), "{text}");
-    let text = stdout(&zban(&root, &["show", E, D]));
-    assert!(text.contains("\nchild_counts: 2/4 closed\n"), "{text}");
+    assert!(line(E).ends_with("  children 3/6 closed"), "{text}");
+    assert!(
+        line(A).ends_with("  [1/2]") && !line(A).contains("children"),
+        "{text}"
+    );
+    let text = stdout(&zban(&root, &["show", E, A]));
+    assert!(text.contains("\nchild_counts: 3/6 closed\n"), "{text}");
     assert_eq!(text.matches("child_counts").count(), 1, "{text}");
+}
+
+// @mara implements VER-CLI
+#[test]
+fn an_ambiguous_child_is_left_out_of_child_counts_but_blocks_closing() {
+    let (_dir, root) = project(&[
+        (open(E), issue("Epic", "todo", "epic", "", 1, "")),
+        (
+            archived(F),
+            issue("Old task", "done", "task", &format!("parent: {E}\n"), 2, ""),
+        ),
+        (
+            open(A),
+            issue("Twin", "todo", "task", &format!("parent: {E}\n"), 3, ""),
+        ),
+        (
+            archived(A),
+            issue("Twin", "done", "task", &format!("parent: {E}\n"), 3, ""),
+        ),
+    ]);
+    let shown = ok(&root, &["show", E]);
+    assert_eq!(
+        shown["issues"][0]["child_counts"],
+        json!({"closed": 1, "total": 1})
+    );
+    assert_eq!(shown["issues"][0]["children"], json!([F]));
+    let warnings: Vec<_> = shown["warnings"].as_array().unwrap().iter().collect();
+    assert_eq!(warnings.len(), 2, "{shown}");
+    assert!(
+        warnings
+            .iter()
+            .all(|warning| warning["code"] == "duplicate_id"
+                && warning["path"]
+                    .as_str()
+                    .unwrap()
+                    .ends_with(&format!("{A}.md"))),
+        "{shown}"
+    );
+    assert_eq!(listed(&root, &["--all", "--parent", E]), [F]);
+    let (status, refused) = run_json(&root, &["update", E, "-s", "done"]);
+    assert_eq!(status, 1);
+    assert_eq!(refused["error"]["code"], "open_children");
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(message.contains(A), "{message}");
 }
 
 #[test]
