@@ -1,6 +1,6 @@
 ---
 title: Rename MCP tag parameter to tags on create_issue and list_issues
-status: todo
+status: in-progress
 type: task
 tags:
   - mcp
