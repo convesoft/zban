@@ -1,6 +1,6 @@
 ---
 title: Report direct-child progress counts on issues (child_counts)
-status: todo
+status: in-progress
 type: feature
 tags:
   - cli
