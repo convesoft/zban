@@ -175,6 +175,9 @@ importers:
 
   .:
     devDependencies:
+      '@convesoft/mara':
+        specifier: 0.4.0-rc.1
+        version: 0.4.0-rc.1
       '@convesoft/nx-rust':
         specifier: 1.0.0-rc.1
         version: 1.0.0-rc.1(nx@24.0.6)
@@ -191,6 +194,23 @@ packages:
   '@clack/prompts@1.7.0':
     resolution: {integrity: sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==}
     engines: {node: '>= 20.12.0'}
+
+  '@convesoft/mara-linux-arm64-gnu@0.4.0-rc.1':
+    resolution: {integrity: sha512-QqjC9nWGpyjCWJrQqudswUt6Y03ncMttYrpjQ6uaxc/Uy0U5/eG8mjPiDN3+ZBzwDGWvoWmOP9tGA2K4oo8kbA==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@convesoft/mara-linux-x64-gnu@0.4.0-rc.1':
+    resolution: {integrity: sha512-YmjXA5eHAebIlC4DE51smH2wfo+0OJK9PCA6ebuUSGDwOF6QpioNGV1kNx9jzdVzfABzrsKgv9Z3lC6z6Xu2Yg==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@convesoft/mara@0.4.0-rc.1':
+    resolution: {integrity: sha512-yXp+eDCZO4Ue+lZNkAQMwmpYyHzAfbSGCcDa5QPClSRSmU+5F5C/xwwRMYeGdF4t8veXjbk6cS/OHJoI4mUo1w==}
+    engines: {node: '>=24'}
+    hasBin: true
 
   '@convesoft/nx-rust@1.0.0-rc.1':
     resolution: {integrity: sha512-fgwiq/vkxagnyJaHecKh4Y3I0yKGKDFBfAEg/6RoG1z1spzpREfVwQwj2CNJl3WET9VmEc1esQqzM0jLH2JuXA==}
@@ -609,6 +629,17 @@ snapshots:
       fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.0
       sisteransi: 1.0.5
+
+  '@convesoft/mara-linux-arm64-gnu@0.4.0-rc.1':
+    optional: true
+
+  '@convesoft/mara-linux-x64-gnu@0.4.0-rc.1':
+    optional: true
+
+  '@convesoft/mara@0.4.0-rc.1':
+    optionalDependencies:
+      '@convesoft/mara-linux-arm64-gnu': 0.4.0-rc.1
+      '@convesoft/mara-linux-x64-gnu': 0.4.0-rc.1
 
   '@convesoft/nx-rust@1.0.0-rc.1(nx@24.0.6)':
     dependencies:

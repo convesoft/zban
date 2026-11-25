@@ -4,128 +4,184 @@ The choices behind zban and the risks we knowingly carry.
 
 ## Decisions
 
-:::mara decision ADR-FILES-IN-REPO
-:mid: 01M764FJ3Z76SNWB69FYE8BQRG
-:title: Store issues as plain files in the repository
-:status: accepted
-:justifies: REQ-ONE-FILE
-:justifies: DES-SHARED-CORE
+---
+
+<a id="01M764FJ3Z76SNWB69FYE8BQRG"></a>
+
+### Store issues as plain files in the repository
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-FILES-IN-REPO |
+| Status | Accepted |
+| Justifies | [REQ-ONE-FILE](issues.mara.md#01M764FJ3ZF9DQZ05TX19YZKPY) |
+| Justifies | [DES-SHARED-CORE](cli.mara.md#01M764FJ3ZNZPGXYJ4CS2QFHPK) |
 
 Agents work in a checkout. External trackers need network access and credentials, and they drift from the branch being worked on. A side database adds locking and recovery problems. zban stores issues only as Markdown files under `.zban/`, with no database, cache or daemon. As a consequence, issue state is local to each branch, and every command reads all issue files. That is fast enough up to several thousand issues.
-:::
 
-:::mara decision ADR-SMALL-SCOPE
-:mid: 01M764FJ3ZAAC9D0V2C1WQY9CB
-:title: Limit v1 to the issue loop
-:status: accepted
-:justifies: REQ-NO-GIT
-:justifies: DES-CLI
+---
+
+<a id="01M764FJ3ZAAC9D0V2C1WQY9CB"></a>
+
+### Limit v1 to the issue loop
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-SMALL-SCOPE |
+| Status | Accepted |
+| Justifies | [REQ-NO-GIT](issues.mara.md#01M764FJ3ZMN288AGT0HD4V1DW) |
+| Justifies | [DES-CLI](cli.mara.md#01M764FJ3Z6N3M80E0PMQZXSD4) |
 
 Issue trackers for agents tend to grow into platforms: query engines, terminal and web UIs, agent chat, worktree and terminal management, claims, named sessions and handoff machinery. Each addition looks reasonable, but together they make the tool hard to reason about. zban v1 contains issue files, relations, readiness, lifecycle and archive, handoff notes on issues, the check command, the CLI, the MCP server and the agent guide.
 
 Excluded are claims and locking, state shared across worktrees, running Git, running agents or managing worktrees, terminal and web UIs, a query language, templates, custom fields, configurable vocabulary, manual ordering, assignees and time tracking. Adding a capability requires a recorded need and a decision first, not just precedent in another tool.
-:::
 
-:::mara decision ADR-NO-CLAIMS
-:mid: 01M764FJ3ZDTFAZ4GG9A8BJ03S
-:title: Rely on the in-progress status instead of claims
-:status: accepted
-:justifies: DES-READINESS
-:accepts: RISK-DUPLICATE-WORK
+---
+
+<a id="01M764FJ3ZDTFAZ4GG9A8BJ03S"></a>
+
+### Rely on the in-progress status instead of claims
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-NO-CLAIMS |
+| Status | Accepted |
+| Justifies | [DES-READINESS](issues.mara.md#01M764FJ3ZXCS66TCPPJ3HF04V) |
+| Accepts | [RISK-DUPLICATE-WORK](#01M764FJ3ZM69JRX3088WM98RP) |
 
 Agents in different worktrees cannot see each other's status changes until their branches merge. Lock files shared through the Git common directory can coordinate them, but at great cost in complexity. zban v1 has no claims and no assignee field. `in-progress` is a durable status in the file, and whoever runs parallel agents (a human or an orchestrator) decides who works on what. If claims prove necessary later, they will be an additional ephemeral layer that leaves the file format and the `in-progress` status unchanged.
-:::
 
-:::mara decision ADR-FIXED-VOCABULARY
-:mid: 01M764FJ3ZYNNKFADFY3G06GRD
-:title: Hardcode statuses, types and priorities
-:status: accepted
-:justifies: REQ-FIXED-VOCABULARY
+---
 
-A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. zban fixes all three sets. `draft` keeps unrefined ideas, and work parked on purpose, out of ready work together with everything under them ([[ADR-DRAFT-HOLDS-DESCENDANTS]]). `cancelled` keeps abandoned work apart from delivered work. There is no milestone type. Nested epics, ordered with `blocked_by`, cover phases inside larger work, and a tag groups a release that cuts across epics. Priorities are five named levels because names read better than numbers in prompts.
-:::
+<a id="01M764FJ3ZYNNKFADFY3G06GRD"></a>
 
-:::mara decision ADR-RANDOM-IDS
-:mid: 01M764FJ3ZADMY1PJZ654H5PHK
-:title: Use short random IDs with a project prefix
-:status: accepted
-:justifies: DES-ISSUE-ID
+### Hardcode statuses, types and priorities
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-FIXED-VOCABULARY |
+| Status | Accepted |
+| Justifies | [REQ-FIXED-VOCABULARY](issues.mara.md#01M764FJ3ZJGRCCPD3K9XH12B0) |
+
+A configurable vocabulary forces every tool and agent to read configuration first, and it makes the agent guide differ per project. zban fixes all three sets. `draft` keeps unrefined ideas, and work parked on purpose, out of ready work together with everything under them ([ADR-DRAFT-HOLDS-DESCENDANTS](#01M81NANBTX4F8FH8A3NVBPCTA)). `cancelled` keeps abandoned work apart from delivered work. There is no milestone type. Nested epics, ordered with `blocked_by`, cover phases inside larger work, and a tag groups a release that cuts across epics. Priorities are five named levels because names read better than numbers in prompts.
+
+---
+
+<a id="01M764FJ3ZADMY1PJZ654H5PHK"></a>
+
+### Use short random IDs with a project prefix
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-RANDOM-IDS |
+| Status | Accepted |
+| Justifies | [DES-ISSUE-ID](issues.mara.md#01M764FJ3ZP2NBQPN65QHVH1XY) |
 
 Sequential numbers collide when parallel branches create issues, and they need a shared counter. UUIDs never collide but are noisy, and the short forms people cite are only prefixes, which can become ambiguous. Four random base36 characters, about 1.7 million values, leave a noticeable chance of collisions across branches in a long-lived project. zban uses its prefix plus six random Crockford base32 characters, about a billion values per prefix, and `zban check` detects any duplicate. IDs carry no order; `created_at` provides it.
 
 The filename is the bare ID, without a slug of the title. A slug goes stale when the title changes, or causes rename churn if it follows the title. Without one, an agent opens an issue straight from its ID, two issues that share an ID land on the same path so Git reports the collision when merging, and there are no slugging rules to specify. Listing titles is left to `zban list`.
-:::
 
-:::mara decision ADR-AUTO-ARCHIVE
-:mid: 01M764FJ3ZWDY1N7FRADERZ3XJ
-:title: Archive when closing rather than on command
-:status: accepted
-:justifies: REQ-AUTO-ARCHIVE
-:justifies: DES-LIFECYCLE
+---
+
+<a id="01M764FJ3ZWDY1N7FRADERZ3XJ"></a>
+
+### Archive when closing rather than on command
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-AUTO-ARCHIVE |
+| Status | Accepted |
+| Justifies | [REQ-AUTO-ARCHIVE](issues.mara.md#01M764FJ3ZKD4N35SRK3JR3Y3B) |
+| Justifies | [DES-LIFECYCLE](issues.mara.md#01M764FJ3ZPNXY2WFB1Y624PFS) |
 
 Archiving in bulk on an explicit command depends on someone running it, and agents may run it only when asked, so closed issues pile up among active ones. zban moves a file into `.zban/archive/` as soon as the issue closes, and back when it reopens. The status stays authoritative, and `zban check --fix` repairs a misplaced file. The costs: a close shows up as a rename plus an edit in diffs, and an edit on one branch combined with a close on another merges as a rename/modify, which Git normally resolves.
-:::
 
-:::mara decision ADR-MERGE-FRIENDLY-FORMAT
-:mid: 01M764FJ3Z8SW2MT7EAP58RF8R
-:title: Shape the file format for Git merges
-:status: accepted
-:justifies: DES-ISSUE-FILE
-:justifies: REQ-RELATIONS
+---
+
+<a id="01M764FJ3Z8SW2MT7EAP58RF8R"></a>
+
+### Shape the file format for Git merges
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-MERGE-FRIENDLY-FORMAT |
+| Status | Accepted |
+| Justifies | [DES-ISSUE-FILE](issues.mara.md#01M764FJ3ZZGJNFXW9VV1NNVAD) |
+| Justifies | [REQ-RELATIONS](issues.mara.md#01M764FJ3ZZZJS6M31EWC6TJMG) |
 
 Issue files are merged by Git, so the format avoids needless conflicts and drift. Each relation is stored once, on one issue. Storing both directions, such as `blocking` and `blocked_by`, lets the two disagree. There is no `updated_at`, which would conflict on every concurrent edit; Git history already records changes. Lists hold one item per line, the key order is fixed, and the ID exists only in the filename. Relations hold bare IDs, not Markdown links: a link would need rewriting in every referring issue whenever its target is archived, so closing one issue would touch others and conflict with their edits on other branches. Editors find an issue by its ID because the ID is the filename.
-:::
 
-:::mara decision ADR-HANDOFF-ON-ISSUE
-:mid: 01M777QQGMRG4N17FAT4EGF628
-:title: Keep handoffs as notes on issues, written and read on request
-:status: accepted
-:justifies: REQ-HANDOFF
-:justifies: DES-HANDOFF
+---
+
+<a id="01M777QQGMRG4N17FAT4EGF628"></a>
+
+### Keep handoffs as notes on issues, written and read on request
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-HANDOFF-ON-ISSUE |
+| Status | Accepted |
+| Justifies | [REQ-HANDOFF](agents.mara.md#01M777QQGMEKBF23H6FN17YY39) |
+| Justifies | [DES-HANDOFF](agents.mara.md#01M777QQGMQNB89NDDMPGRTTFA) |
 
 Agents lose context between sessions, and a short note written while the conversation is still available carries it best. Notes generated automatically when a session ends come too late: the model is gone and session-end hooks get little time. Stop hooks that force a note after every turn are noisy. So agents write a note only when the developer asks.
 
 The note lives in the issue body, overwritten in place, rather than in a separate handoff file or entity. The issue is already the record that outlives a session, a note there travels with the branch, and Git keeps earlier versions. A body section stays readable in Markdown previews and keeps the frontmatter small. zban stamps only the time, because it cannot read Git; the agent records the commit and branch.
 
-zban does not deliver notes into new sessions. Notes belong to issues, and zban cannot tell which issue a session is about. Including every in-progress note in `prime` or the MCP instructions would cost every session and show other people's work after merges. Choosing by the current worktree or branch would need Git access or worktree tracking, which [[REQ-NO-GIT]] and [[ADR-SMALL-SCOPE]] exclude. The developer asks the agent to continue, and the agent shows the issue.
-:::
+zban does not deliver notes into new sessions. Notes belong to issues, and zban cannot tell which issue a session is about. Including every in-progress note in `prime` or the MCP instructions would cost every session and show other people's work after merges. Choosing by the current worktree or branch would need Git access or worktree tracking, which [REQ-NO-GIT](issues.mara.md#01M764FJ3ZMN288AGT0HD4V1DW) and [ADR-SMALL-SCOPE](#01M764FJ3ZAAC9D0V2C1WQY9CB) exclude. The developer asks the agent to continue, and the agent shows the issue.
 
-:::mara decision ADR-CLI-AND-MCP
-:mid: 01M764FJ3Z27M3C4E700KAKEE6
-:title: Offer CLI and MCP over one core, plus prime
-:status: accepted
-:justifies: REQ-SURFACE-PARITY
-:justifies: REQ-AGENT-GUIDE
+---
+
+<a id="01M764FJ3Z27M3C4E700KAKEE6"></a>
+
+### Offer CLI and MCP over one core, plus prime
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-CLI-AND-MCP |
+| Status | Accepted |
+| Justifies | [REQ-SURFACE-PARITY](cli.mara.md#01M764FJ3ZGF33SBBZTSCZ1FTM) |
+| Justifies | [REQ-AGENT-GUIDE](agents.mara.md#01M764FJ3Z4GXPTR8FHAF3XX7E) |
 
 MCP gives agents typed tools and server instructions in clients that support them. The CLI works everywhere: in shells, CI and agents without MCP. v1 ships both over one shared core. The agent guide is delivered as MCP server instructions, and through `zban prime` for agents that use only the CLI or whose clients ignore server instructions.
-:::
 
-:::mara decision ADR-RUST-BINARY
-:mid: 01M764FJ3ZRYT7TB8RKNHPFM8K
-:title: Ship one Rust binary through GitHub Releases, dual-licensed
-:status: accepted
-:justifies: DES-SHARED-CORE
+---
 
-zban is written in Rust and ships as one self-contained binary. It is distributed through GitHub Releases and npm ([[ADR-NPM-DISTRIBUTION]]): each GitHub release attaches prebuilt binaries and a SHA-256 checksum file, each npm release publishes `@convesoft/zban` with four per-platform binary packages, and any release tag can be built from source with `cargo install --locked --git https://github.com/convesoft/zban --tag vX.Y.Z`. zban is not published to crates.io, and its manifest sets `publish = false` so that nobody publishes it by accident: zban is an application, not a library other crates depend on. The license is `MIT OR Apache-2.0`.
+<a id="01M764FJ3ZRYT7TB8RKNHPFM8K"></a>
+
+### Ship one Rust binary through GitHub Releases, dual-licensed
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-RUST-BINARY |
+| Status | Accepted |
+| Justifies | [DES-SHARED-CORE](cli.mara.md#01M764FJ3ZNZPGXYJ4CS2QFHPK) |
+
+zban is written in Rust and ships as one self-contained binary. It is distributed through GitHub Releases and npm ([ADR-NPM-DISTRIBUTION](#01M81JCJFBWY36PNAJD0Y3B125)): each GitHub release attaches prebuilt binaries and a SHA-256 checksum file, each npm release publishes `@convesoft/zban` with four per-platform binary packages, and any release tag can be built from source with `cargo install --locked --git https://github.com/convesoft/zban --tag vX.Y.Z`. zban is not published to crates.io, and its manifest sets `publish = false` so that nobody publishes it by accident: zban is an application, not a library other crates depend on. The license is `MIT OR Apache-2.0`.
 
 v1 supports Linux and macOS on x86_64 and aarch64. Windows is deferred until there is a need for it, because it needs its own handling of atomic file replacement, CRLF line endings and paths.
 
 Release binaries are built for `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin` and `aarch64-apple-darwin`. On Linux, musl is chosen over glibc because the binary is then statically linked: one file runs on every distribution, whatever its glibc version, including musl-based ones such as Alpine. A glibc binary would instead have to be built against the oldest glibc it should support. musl's slower memory allocator does not matter to a short-lived command that reads small files.
 
-A release is cut from `main` (or a `release/*` branch) after bumping `Cargo.toml` and `Cargo.lock` with `pnpm nx release version`, by dispatching `.github/workflows/release.yml` ([[ADR-NPM-DISTRIBUTION]]). The workflow runs the test suite on the commit being released, on each platform whose binary it can run, before publishing to npm, tagging `vX.Y.Z` and creating the GitHub Release. A release then ships only code that has landed and passes its tests.
+A release is cut from `main` (or a `release/*` branch) after bumping `Cargo.toml` and `Cargo.lock` with `pnpm nx release version`, by dispatching `.github/workflows/release.yml` ([ADR-NPM-DISTRIBUTION](#01M81JCJFBWY36PNAJD0Y3B125)). The workflow runs the test suite on the commit being released, on each platform whose binary it can run, before publishing to npm, tagging `vX.Y.Z` and creating the GitHub Release. A release then ships only code that has landed and passes its tests.
 
 CI and the release workflow build with one exact Rust version, pinned in `rust-toolchain.toml` together with the `rustfmt` and `clippy` components and the four release targets. A new Rust release then cannot fail `main` through a changed format or lint while the repository stays the same, and a release tag can be rebuilt with the compiler that built it. The pin is bumped deliberately, in a pull request of its own that also carries whatever the new version requires, such as reformatting. `rust-version` in `Cargo.toml` separately declares the oldest Rust that builds zban from source, and a CI job runs the test suite with that version, read from the manifest, so that the declared minimum stays true. Following the floating `stable` channel was rejected because Rust 1.100.0 failed `main` through a rustfmt change alone, and because release builds could not be reproduced.
 
 Each release archive holds the binary, the README, zban's two license files and `THIRD-PARTY-LICENSES`, which gives the license texts of the crates in `Cargo.lock` that the build for its platform uses and names the crates under each. Most of these crates are licensed under MIT or Apache-2.0, which ask anyone who redistributes them in binary form to pass on their notices. The release workflow writes the file on each build with `cargo-about`, installed at a pinned version with `cargo install --locked`, from `about.toml` and the template `about.hbs` in the repository. `about.toml` lists the licenses the crates may use, and the license files to quote for crates whose licensing `cargo-about` cannot read on its own. A crate under another license, or a quoted file whose checksum changed, fails the release until someone reviews it. `cargo-about` is a release tool only: it is not a dependency in `Cargo.toml`, and contributors never run it. The file is plain text, like the rest of the archive, so it reads in a terminal. A hand-maintained notices file was rejected because nothing would keep it in step with `Cargo.lock`, and pointing at the source tree because the archives would still lack the notices.
-:::
 
-:::mara decision ADR-NPM-DISTRIBUTION
-:mid: 01M81JCJFBWY36PNAJD0Y3B125
-:title: Distribute zban on npm as platform binary packages and adopt Nx with nx-rust for releases
-:status: accepted
-:justifies: DES-SHARED-CORE
+---
 
-[[ADR-RUST-BINARY]] limited v1 distribution to GitHub Releases and deferred package-manager wrappers pending a recorded decision. In practice, developers and coding-agent setups benefit from installing or running zban through npm and `npx` without manually fetching release archives or installing a Rust toolchain ([[NEED-NPM-DISTRIBUTION]]).
+<a id="01M81JCJFBWY36PNAJD0Y3B125"></a>
+
+### Distribute zban on npm as platform binary packages and adopt Nx with nx-rust for releases
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-NPM-DISTRIBUTION |
+| Status | Accepted |
+| Justifies | [DES-SHARED-CORE](cli.mara.md#01M764FJ3ZNZPGXYJ4CS2QFHPK) |
+
+[ADR-RUST-BINARY](#01M764FJ3ZRYT7TB8RKNHPFM8K) limited v1 distribution to GitHub Releases and deferred package-manager wrappers pending a recorded decision. In practice, developers and coding-agent setups benefit from installing or running zban through npm and `npx` without manually fetching release archives or installing a Rust toolchain ([NEED-NPM-DISTRIBUTION](product.mara.md#01M81JC6J5RQMFZ60SKJN5XGHQ)).
 
 zban is therefore distributed on npm alongside GitHub Releases as five packages under the `@convesoft` scope:
 
@@ -135,9 +191,9 @@ zban is therefore distributed on npm alongside GitHub Releases as five packages 
 - `@convesoft/zban-darwin-arm64` (`aarch64-apple-darwin`, `os: ["darwin"]`, `cpu: ["arm64"]`), and
 - `@convesoft/zban-darwin-x64` (`x86_64-apple-darwin`, `os: ["darwin"]`, `cpu: ["x64"]`).
 
-Each platform package holds `bin/zban`, `README.md`, `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-LICENSES`. Because the Linux binaries are statically linked against musl ([[ADR-RUST-BINARY]]), the Linux packages run on both glibc and musl distributions and set no `libc` restriction.
+Each platform package holds `bin/zban`, `README.md`, `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-LICENSES`. Because the Linux binaries are statically linked against musl ([ADR-RUST-BINARY](#01M764FJ3ZRYT7TB8RKNHPFM8K)), the Linux packages run on both glibc and musl distributions and set no `libc` restriction.
 
-`@convesoft/zban` carries every file of the repository's `docs/` folder as it is, in a `docs/` folder beside its `README.md`, so that coding agents and developers read, under `node_modules/@convesoft/zban/docs/`, the user guide and specification of the version they installed rather than those of `main`. The maintainer decided this on 22 November 2026, following the pattern that `@convesoft/nx-rust` adopted for its own documentation. Only the main package carries the pages: every installation gets it, so copies in the four platform packages would add nothing, and the release archives stay as [[ADR-RUST-BINARY]] describes them. `scripts/package-npm.mjs` copies the folder whole, so a new page ships without a change to the script, and the release workflow fails if the packed `@convesoft/zban` lacks `docs/index.mara.md` or any other file of `docs/`. The README's links into `docs/` resolve inside the installed package, so a sentence in the README is the only pointer to the bundled pages: no separate pointer file is added, because the `PLUGIN.md` of `@convesoft/nx-rust` follows an Nx plugin convention that has no counterpart for zban, and the agent guide does not change.
+`@convesoft/zban` carries every file of the repository's `docs/` folder as it is, in a `docs/` folder beside its `README.md`, so that coding agents and developers read, under `node_modules/@convesoft/zban/docs/`, the user guide and specification of the version they installed rather than those of `main`. The maintainer decided this on 22 November 2026, following the pattern that `@convesoft/nx-rust` adopted for its own documentation. Only the main package carries the pages: every installation gets it, so copies in the four platform packages would add nothing, and the release archives stay as [ADR-RUST-BINARY](#01M764FJ3ZRYT7TB8RKNHPFM8K) describes them. `scripts/package-npm.mjs` copies the folder whole, so a new page ships without a change to the script, and the release workflow fails if the packed `@convesoft/zban` lacks `docs/index.mara.md` or any other file of `docs/`. The README's links into `docs/` resolve inside the installed package, so a sentence in the README is the only pointer to the bundled pages: no separate pointer file is added, because the `PLUGIN.md` of `@convesoft/nx-rust` follows an Nx plugin convention that has no counterpart for zban, and the agent guide does not change.
 
 Three consequences are accepted. The pages ship as they are, so a relative link that leaves `docs/`, such as the documentation index's link to `.zban/`, does not resolve inside the package, nor do the README's links to `.zban/`, `.mara/` and `AGENTS.md`. The README in the platform packages and the release archives links into a `docs/` folder that they do not carry. And `@convesoft/zban` grows from about 21 kB to about 133 kB unpacked, 46 kB packed, as measured when this was decided. A pull request that changes only the pages does not run the release workflow, because packing does not depend on their content; the check runs on every release and on every pull request that changes the packaging.
 
@@ -155,43 +211,58 @@ Rejected alternatives:
 - **Publishing to crates.io instead of npm.** Does not help Node-based agent setups (`npx`) without a Rust toolchain, and zban remains an application rather than a library crate.
 
 Costs accepted: the repository carries a minimal Node/pnpm/Nx root configuration alongside the Rust crate, and all five `@convesoft/zban*` packages require one-time Trusted Publisher configuration on npmjs.com bound to `convesoft/zban`, `release.yml` and the `npm` environment.
-:::
 
-:::mara decision ADR-DEPENDENCIES
-:mid: 01M779N7PPXZEFMF6M942DMS6H
-:title: Build on established crates
-:status: accepted
-:justifies: DES-SHARED-CORE
-:justifies: DES-MCP-TOOLS
-:justifies: DES-ISSUE-FILE
+---
+
+<a id="01M779N7PPXZEFMF6M942DMS6H"></a>
+
+### Build on established crates
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-DEPENDENCIES |
+| Status | Accepted |
+| Justifies | [DES-SHARED-CORE](cli.mara.md#01M764FJ3ZNZPGXYJ4CS2QFHPK) |
+| Justifies | [DES-MCP-TOOLS](mcp.mara.md#01M764FJ3Z6VP70QDFVWGMZFB8) |
+| Justifies | [DES-ISSUE-FILE](issues.mara.md#01M764FJ3ZZGJNFXW9VV1NNVAD) |
 
 zban needs argument parsing, JSON, a YAML parser for issue headers, an MCP server and graph checks over relations. Writing these by hand keeps the dependency tree small, but spends effort on parser and protocol details that maintained crates already handle, and hand-written protocol code tends to lag behind MCP revisions. zban builds on established crates: `clap` for arguments, `serde` and `serde_json` for JSON, `saphyr-parser` for YAML, whose parse events expose enough detail to reject anchors, aliases, tags and duplicate keys, the official MCP Rust SDK `rmcp` for the server, `petgraph` for cycle and reachability checks over `parent` and `blocked_by`, and `getrandom` for IDs.
 
-The YAML crate parses header values only. A thin text layer splits the header into top-level entries, so unknown keys are kept verbatim and known keys are written in the canonical form of [[DES-ISSUE-FILE]] without a generic YAML serializer. The two keys of `config.toml` are read by a small parser in zban rather than a TOML crate. `rmcp` needs the `tokio` runtime; only `zban mcp` starts it, and the core library stays synchronous. The costs are a larger binary and dependency tree. Adding a runtime dependency beyond these needs a recorded decision.
+The YAML crate parses header values only. A thin text layer splits the header into top-level entries, so unknown keys are kept verbatim and known keys are written in the canonical form of [DES-ISSUE-FILE](issues.mara.md#01M764FJ3ZZGJNFXW9VV1NNVAD) without a generic YAML serializer. The two keys of `config.toml` are read by a small parser in zban rather than a TOML crate. `rmcp` needs the `tokio` runtime; only `zban mcp` starts it, and the core library stays synchronous. The costs are a larger binary and dependency tree. Adding a runtime dependency beyond these needs a recorded decision.
 
 The tests have one dependency of their own, `tempfile`, which is not built into the binary. Each test builds a fresh fixture project in a `TempDir`: a directory with a random name under the system's temporary directory, owned by the test and deleted when it ends. No two tests share a directory, even under a runner that starts one process per test, and no fixture lies inside this repository, whose own `.zban/` a test would otherwise find.
-:::
 
-:::mara decision ADR-NO-CASCADE
-:mid: 01M76XFGSJ81ZR60CGYEMESP5K
-:title: Refuse to close unfinished work rather than cascade
-:status: accepted
-:justifies: REQ-CLOSE-CHECKLIST
-:justifies: DES-LIFECYCLE
+---
 
-Closing an issue while its checklist or children are unfinished hides that work. Open children of a closed parent silently drop out of the ready list ([[DES-READINESS]]). Cascading the close to the children would avoid that, but one command would then rewrite many files, could stop part-way, and would give every child the parent's reason, although some may be finished, moved elsewhere or still wanted. zban refuses such a close unless it is forced, and it never closes another issue implicitly. A forced close leaves the open children in place, and `zban check` warns about them. Closing `done` and `cancelled` is treated the same way; only unchecked task items are specific to `done`.
-:::
+<a id="01M76XFGSJ81ZR60CGYEMESP5K"></a>
 
-:::mara decision ADR-DRAFT-HOLDS-DESCENDANTS
-:mid: 01M81NANBTX4F8FH8A3NVBPCTA
-:title: Let a draft ancestor hold back its descendants
-:status: accepted
-:justifies: DES-READINESS
-:justifies: DES-AGENT-GUIDE
+### Refuse to close unfinished work rather than cascade
 
-`draft` keeps an issue out of ready work ([[ADR-FIXED-VOCABULARY]]), but zban 0.1.0 still offered its `todo` descendants: only closed or blocked ancestors held an issue back. Projects plan an epic and refine its children as `todo` before the epic should start, and they keep backlog and work only a human can do away from agents. Under autonomous orchestrators that pick from the ready list, the children of such planned epics were dispatched as soon as they were filed, and every orchestrator prompt had to filter parked and human-only work out by tag and priority conventions, such as `backlog`, `deferred` or `maintainer`, which zban neither defines nor checks.
+| Type | Decision |
+| --- | --- |
+| ID | ADR-NO-CASCADE |
+| Status | Accepted |
+| Justifies | [REQ-CLOSE-CHECKLIST](issues.mara.md#01M764FJ3Z4DX6RS09TWKY84QC) |
+| Justifies | [DES-LIFECYCLE](issues.mara.md#01M764FJ3ZPNXY2WFB1Y624PFS) |
 
-The maintainer decided that a `draft` ancestor holds back every descendant, as a closed or blocked one does, and zban reports `ancestor_draft:<id>` for each `draft` ancestor ([[DES-READINESS]]). Setting one issue to `draft` parks its whole subtree: a planned epic stays `draft` and leaves `draft` when its work may start. The agent guide tells agents to park planned epics, backlog and human-only work as `draft` ([[DES-AGENT-GUIDE]]). An ancestor's status `in-progress` still holds nothing back by itself, because its children carry its work; like any open ancestor, it holds its descendants back while it has an open blocker.
+Closing an issue while its checklist or children are unfinished hides that work. Open children of a closed parent silently drop out of the ready list ([DES-READINESS](issues.mara.md#01M764FJ3ZXCS66TCPPJ3HF04V)). Cascading the close to the children would avoid that, but one command would then rewrite many files, could stop part-way, and would give every child the parent's reason, although some may be finished, moved elsewhere or still wanted. zban refuses such a close unless it is forced, and it never closes another issue implicitly. A forced close leaves the open children in place, and `zban check` warns about them. Closing `done` and `cancelled` is treated the same way; only unchecked task items are specific to `done`.
+
+---
+
+<a id="01M81NANBTX4F8FH8A3NVBPCTA"></a>
+
+### Let a draft ancestor hold back its descendants
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-DRAFT-HOLDS-DESCENDANTS |
+| Status | Accepted |
+| Justifies | [DES-READINESS](issues.mara.md#01M764FJ3ZXCS66TCPPJ3HF04V) |
+| Justifies | [DES-AGENT-GUIDE](agents.mara.md#01M764FJ3ZPFMKF31AGPP8X9PA) |
+
+`draft` keeps an issue out of ready work ([ADR-FIXED-VOCABULARY](#01M764FJ3ZYNNKFADFY3G06GRD)), but zban 0.1.0 still offered its `todo` descendants: only closed or blocked ancestors held an issue back. Projects plan an epic and refine its children as `todo` before the epic should start, and they keep backlog and work only a human can do away from agents. Under autonomous orchestrators that pick from the ready list, the children of such planned epics were dispatched as soon as they were filed, and every orchestrator prompt had to filter parked and human-only work out by tag and priority conventions, such as `backlog`, `deferred` or `maintainer`, which zban neither defines nor checks.
+
+The maintainer decided that a `draft` ancestor holds back every descendant, as a closed or blocked one does, and zban reports `ancestor_draft:<id>` for each `draft` ancestor ([DES-READINESS](issues.mara.md#01M764FJ3ZXCS66TCPPJ3HF04V)). Setting one issue to `draft` parks its whole subtree: a planned epic stays `draft` and leaves `draft` when its work may start. The agent guide tells agents to park planned epics, backlog and human-only work as `draft` ([DES-AGENT-GUIDE](agents.mara.md#01M764FJ3ZPFMKF31AGPP8X9PA)). An ancestor's status `in-progress` still holds nothing back by itself, because its children carry its work; like any open ancestor, it holds its descendants back while it has an open blocker.
 
 Rejected alternatives:
 
@@ -200,13 +271,18 @@ Rejected alternatives:
 - **Setting each child to `draft`.** It works without a change, but each child has to be promoted when the epic starts, and a `todo` child filed later is offered at once.
 
 The costs: a refined child under a `draft` epic waits until the epic becomes `todo`, and after upgrading, `todo` issues under an existing `draft` leave the ready list. Their `not_ready` names the `draft` ancestor.
-:::
 
-:::mara decision ADR-WRITE-LOCK
-:mid: 01M77YZD0BXR4H9NYMR7CFMW6R
-:title: Lock the project directory only around each write and read
-:status: accepted
-:justifies: DES-SHARED-CORE
+---
+
+<a id="01M77YZD0BXR4H9NYMR7CFMW6R"></a>
+
+### Lock the project directory only around each write and read
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-WRITE-LOCK |
+| Status | Accepted |
+| Justifies | [DES-SHARED-CORE](cli.mara.md#01M764FJ3ZNZPGXYJ4CS2QFHPK) |
 
 Comparing a file's bytes just before renaming over it leaves a window between the comparison and the rename. The v0.1.0 review saw two `zban update` runs on one issue both pass the comparison, and the later rename dropped the earlier change while both reported success. zban therefore holds an exclusive advisory lock on the `.zban/` directory from each such comparison until the rename or deletion that follows, and while it moves a file between `.zban/` and the archive. The standard library's `File::lock` provides it on Linux and macOS without another dependency; it needs Rust 1.89, which the manifest declares as `rust-version`.
 
@@ -214,81 +290,112 @@ Reads take the same lock, shared, from listing `.zban/` and `.zban/archive/` unt
 
 A lock file was rejected: a crash can leave it behind and it can be committed by accident, whereas the operating system releases a lock on the directory when the process ends, even when it is killed. Holding the lock for a whole command is not needed: the byte comparison already reports stale reads as `conflict`, and short locks keep other zban processes from waiting while a command parses the files and prepares its change.
 
-The lock is not a claim: it covers one file operation or one read of the files, not an issue between commands, so the exclusion of claims and locking in [[ADR-SMALL-SCOPE]] stands. It coordinates zban processes that share one `.zban/` directory. Editors, Git and other worktrees do not take it. On a file system without advisory locks, taking the lock fails as unsupported, and zban then writes or reads without it, a write guarded by the byte comparison alone as before; any other failure to take the lock fails the command with `io`.
-:::
+The lock is not a claim: it covers one file operation or one read of the files, not an issue between commands, so the exclusion of claims and locking in [ADR-SMALL-SCOPE](#01M764FJ3ZAAC9D0V2C1WQY9CB) stands. It coordinates zban processes that share one `.zban/` directory. Editors, Git and other worktrees do not take it. On a file system without advisory locks, taking the lock fails as unsupported, and zban then writes or reads without it, a write guarded by the byte comparison alone as before; any other failure to take the lock fails the command with `io`.
 
-:::mara decision ADR-CREATE-WITHOUT-HARD-LINKS
-:mid: 01M785TJ0TQG6K5K6WJS3G8GBE
-:title: Create issue files by renaming where hard links are unsupported
-:status: accepted
-:justifies: DES-SHARED-CORE
-:justifies: REQ-NO-LOST-UPDATES
+---
 
-`init` and `create` write a temporary file and then hard-link it to its name, so that the write is atomic ([[REQ-PRESERVE-CONTENT]]) and a create fails rather than replacing an existing file. Some file systems have no hard links. On Linux, linking then fails with `EPERM`, which `link(2)` documents for a file system that "does not support the creation of hard links"; FAT and exFAT drives and many FUSE mounts are such file systems. On macOS, `linkat(2)` documents `ENOTSUP` for a file system that "does not support this call". With zban 0.1.0 on an `rclone mount` of a local directory, mounted by an ordinary user, `init` and every `create`, open or closed, failed with `io` and "Operation not permitted (os error 1)". `update`, closing, reopening and `delete`, which rename or remove files, worked, and so did advisory locks.
+<a id="01M785TJ0TQG6K5K6WJS3G8GBE"></a>
 
-zban keeps the hard link. When linking fails with `EPERM` on Linux, or as unsupported (`Unsupported`, or the raw errors `ENOSYS`, `ENOTSUP` and `EOPNOTSUPP`, as for the lock of [[ADR-WRITE-LOCK]]), `init` and `create` instead take the exclusive lock, check that the name is unused, for an issue in both `.zban/` and the archive, and rename the temporary file to it, as closing and reopening already move a file. Any other failure to link fails with `io`. Writes stay atomic, and an interrupted create leaves only a temporary file. File systems with hard links keep the absolute guarantee that a create never replaces a file. On the others, no other zban process can take the name between the check and the rename, but a writer that does not take the lock can: an editor, Git, or zban on a file system that has no advisory locks either. It would have to create the same freshly drawn random ID, one of 2^30 values that neither directory held an instant before, in that instant. [[ADR-WRITE-LOCK]] accepts the same caveat for replacing and moving a file. Falling back on an `EPERM` with another cause is harmless: each such cause that can apply to a file zban has just created also makes the rename fail, so the command fails with `io` as before.
+### Create issue files by renaming where hard links are unsupported
+
+| Type | Decision |
+| --- | --- |
+| ID | ADR-CREATE-WITHOUT-HARD-LINKS |
+| Status | Accepted |
+| Justifies | [DES-SHARED-CORE](cli.mara.md#01M764FJ3ZNZPGXYJ4CS2QFHPK) |
+| Justifies | [REQ-NO-LOST-UPDATES](issues.mara.md#01M76XFGSJMTW8EQ1TN4W3KV1F) |
+
+`init` and `create` write a temporary file and then hard-link it to its name, so that the write is atomic ([REQ-PRESERVE-CONTENT](issues.mara.md#01M764FJ3Z0CDR7D6WGHMJYWXK)) and a create fails rather than replacing an existing file. Some file systems have no hard links. On Linux, linking then fails with `EPERM`, which `link(2)` documents for a file system that "does not support the creation of hard links"; FAT and exFAT drives and many FUSE mounts are such file systems. On macOS, `linkat(2)` documents `ENOTSUP` for a file system that "does not support this call". With zban 0.1.0 on an `rclone mount` of a local directory, mounted by an ordinary user, `init` and every `create`, open or closed, failed with `io` and "Operation not permitted (os error 1)". `update`, closing, reopening and `delete`, which rename or remove files, worked, and so did advisory locks.
+
+zban keeps the hard link. When linking fails with `EPERM` on Linux, or as unsupported (`Unsupported`, or the raw errors `ENOSYS`, `ENOTSUP` and `EOPNOTSUPP`, as for the lock of [ADR-WRITE-LOCK](#01M77YZD0BXR4H9NYMR7CFMW6R)), `init` and `create` instead take the exclusive lock, check that the name is unused, for an issue in both `.zban/` and the archive, and rename the temporary file to it, as closing and reopening already move a file. Any other failure to link fails with `io`. Writes stay atomic, and an interrupted create leaves only a temporary file. File systems with hard links keep the absolute guarantee that a create never replaces a file. On the others, no other zban process can take the name between the check and the rename, but a writer that does not take the lock can: an editor, Git, or zban on a file system that has no advisory locks either. It would have to create the same freshly drawn random ID, one of 2^30 values that neither directory held an instant before, in that instant. [ADR-WRITE-LOCK](#01M77YZD0BXR4H9NYMR7CFMW6R) accepts the same caveat for replacing and moving a file. Falling back on an `EPERM` with another cause is harmless: each such cause that can apply to a file zban has just created also makes the rename fail, so the command fails with `io` as before.
 
 The rejected alternatives:
 
 - **Keep hard links only.** Name the missing support in the `io` message and document that zban needs hard links. No promise changes, but zban cannot create issues on these file systems.
-- **Create the issue file exclusively.** Open the issue's name with exclusive creation, then write and sync it. A create still never replaces a file, but an interrupted create leaves an empty or partial issue file, which breaks [[REQ-PRESERVE-CONTENT]]. `check` would report it as unreadable, and `check --fix` could not tell it from a damaged hand edit. A read during the write would see the partial file unless the write held the lock.
-- **Rename without replacing.** `renameat2` with `RENAME_NOREPLACE` on Linux and `renamex_np` with `RENAME_EXCL` on macOS are atomic and never replace. The standard library offers neither, so they need a new dependency ([[ADR-DEPENDENCIES]]), and FUSE mounts support them only when their server does, so another fallback would still be needed.
+- **Create the issue file exclusively.** Open the issue's name with exclusive creation, then write and sync it. A create still never replaces a file, but an interrupted create leaves an empty or partial issue file, which breaks [REQ-PRESERVE-CONTENT](issues.mara.md#01M764FJ3Z0CDR7D6WGHMJYWXK). `check` would report it as unreadable, and `check --fix` could not tell it from a damaged hand edit. A read during the write would see the partial file unless the write held the lock.
+- **Rename without replacing.** `renameat2` with `RENAME_NOREPLACE` on Linux and `renamex_np` with `RENAME_EXCL` on macOS are atomic and never replace. The standard library offers neither, so they need a new dependency ([ADR-DEPENDENCIES](#01M779N7PPXZEFMF6M942DMS6H)), and FUSE mounts support them only when their server does, so another fallback would still be needed.
 - **Always check, then rename.** Dropping the hard link would remove one code path, but every file system would then carry the caveat above.
-:::
+
+---
 
 ## Risks
 
-:::mara risk RISK-DUPLICATE-WORK
-:mid: 01M764FJ3ZM69JRX3088WM98RP
-:title: Parallel agents duplicate work
-:status: accepted
-:likelihood: possible
-:consequence: moderate
-:threatens: NEED-FIND-NEXT
+---
 
-Two agents on different branches may both see an issue as ready and start it, because `in-progress` on one branch is invisible on the other until merge. Two agents that find the same problem may likewise each file an issue for it, because an issue created on one branch is invisible on the other until merge. The work is duplicated and one result is discarded. [[ADR-NO-CLAIMS]] accepts this for v1, and [[ADR-SMALL-SCOPE]] excludes the state shared across worktrees that could prevent it.
-:::
+<a id="01M764FJ3ZM69JRX3088WM98RP"></a>
 
-:::mara risk RISK-ID-COLLISION
-:mid: 01M764FJ3Z4YEGWP7Z0Y8VZE9N
-:title: Issues created independently share an ID
-:status: accepted
-:likelihood: rare
-:consequence: minor
-:threatens: REQ-MERGE-SAFE-IDS
+### Parallel agents duplicate work
+
+| Type | Risk |
+| --- | --- |
+| ID | RISK-DUPLICATE-WORK |
+| Status | Accepted |
+| Likelihood | Possible |
+| Consequence | Moderate |
+| Threatens | [NEED-FIND-NEXT](product.mara.md#01M764FJ3ZKQYBEXD73381XSPQ) |
+
+Two agents on different branches may both see an issue as ready and start it, because `in-progress` on one branch is invisible on the other until merge. Two agents that find the same problem may likewise each file an issue for it, because an issue created on one branch is invisible on the other until merge. The work is duplicated and one result is discarded. [ADR-NO-CLAIMS](#01M764FJ3ZDTFAZ4GG9A8BJ03S) accepts this for v1, and [ADR-SMALL-SCOPE](#01M764FJ3ZAAC9D0V2C1WQY9CB) excludes the state shared across worktrees that could prevent it.
+
+---
+
+<a id="01M764FJ3Z4YEGWP7Z0Y8VZE9N"></a>
+
+### Issues created independently share an ID
+
+| Type | Risk |
+| --- | --- |
+| ID | RISK-ID-COLLISION |
+| Status | Accepted |
+| Likelihood | Rare |
+| Consequence | Minor |
+| Threatens | [REQ-MERGE-SAFE-IDS](issues.mara.md#01M764FJ3ZQ5N4A9NJC8NNK6SA) |
 
 Two branches could generate the same random ID. Both issues are then `<id>.md`, so the merge stops with an add/add conflict that has to be resolved by giving one issue a new ID. The collision merges silently only when one copy was already archived on its branch, so the paths differ; the ID is then ambiguous until `zban check` reports it. With 2^30 values per prefix, a thousand issues created on each of two branches collide with a probability of about 0.1%.
-:::
 
-:::mara risk RISK-SESSION-ABOVE-PROJECT
-:mid: 01M772MFTG88ME51FKVXTNF540
-:title: Agents started above a project miss the guide
-:status: accepted
-:likelihood: possible
-:consequence: minor
-:threatens: NEED-AGENT-ONBOARDING
+---
+
+<a id="01M772MFTG88ME51FKVXTNF540"></a>
+
+### Agents started above a project miss the guide
+
+| Type | Risk |
+| --- | --- |
+| ID | RISK-SESSION-ABOVE-PROJECT |
+| Status | Accepted |
+| Likelihood | Possible |
+| Consequence | Minor |
+| Threatens | [NEED-AGENT-ONBOARDING](product.mara.md#01M764FJ3Z8YQQEKPG1YMKZK0P) |
 
 zban decides whether to deliver the agent guide from the directory where a session starts. An agent started in a folder above the project, such as a folder of several repositories or the top of a monorepo with `.zban/` in a subfolder, gets nothing from `zban prime` and only a short note over MCP. It may then track work outside zban. Delivering the full guide everywhere would cost every unrelated session about 150 lines and give advice that does not apply there. The short MCP note still points to `zban prime -C`, and the user guide documents the limitation.
-:::
 
-:::mara risk RISK-MERGE-CONFLICTS
-:mid: 01M764FJ3ZVFTZJKT1TXJQ3SM9
-:title: Concurrent edits to one issue conflict on merge
-:status: accepted
-:likelihood: possible
-:consequence: minor
-:threatens: NEED-BRANCH-SAFE
+---
+
+<a id="01M764FJ3ZVFTZJKT1TXJQ3SM9"></a>
+
+### Concurrent edits to one issue conflict on merge
+
+| Type | Risk |
+| --- | --- |
+| ID | RISK-MERGE-CONFLICTS |
+| Status | Accepted |
+| Likelihood | Possible |
+| Consequence | Minor |
+| Threatens | [NEED-BRANCH-SAFE](product.mara.md#01M764FJ3Z4B0WDVBR7JXWBR5B) |
 
 Two branches that edit the same lines of the same issue conflict when merged, which interrupts an agent's flow. The file format keeps the conflicting surface small.
-:::
 
-:::mara risk RISK-SCOPE-CREEP
-:mid: 01M764FJ3Z2R43ACV2SEMDKTXB
-:title: zban grows beyond a small tool
-:status: accepted
-:likelihood: likely
-:consequence: major
-:threatens: GOAL-SMALL-TOOL
+---
 
-Each feature of comparable tools looks reasonable on its own, and agents readily propose more. Accumulated features would make zban hard to understand and maintain. [[ADR-SMALL-SCOPE]] and the repository's agent instructions require a recorded need and decision before scope grows.
-:::
+<a id="01M764FJ3Z2R43ACV2SEMDKTXB"></a>
+
+### zban grows beyond a small tool
+
+| Type | Risk |
+| --- | --- |
+| ID | RISK-SCOPE-CREEP |
+| Status | Accepted |
+| Likelihood | Likely |
+| Consequence | Major |
+| Threatens | [GOAL-SMALL-TOOL](product.mara.md#01M764FJ3Z3P69KAH9C5ZFPZWD) |
+
+Each feature of comparable tools looks reasonable on its own, and agents readily propose more. Accumulated features would make zban hard to understand and maintain. [ADR-SMALL-SCOPE](#01M764FJ3ZAAC9D0V2C1WQY9CB) and the repository's agent instructions require a recorded need and decision before scope grows.
