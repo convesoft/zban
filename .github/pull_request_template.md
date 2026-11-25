@@ -9,7 +9,7 @@ Mara items:
 - [ ] `cargo fmt --all -- --check`
 - [ ] `cargo clippy --all-targets -- -D warnings`
 - [ ] `cargo test`
-- [ ] `mara schema validate && mara project validate`
+- [ ] `pnpm mara schema validate && pnpm mara project validate`
 - [ ] The issue's `Done when` checks pass
 
 ## Known limitations

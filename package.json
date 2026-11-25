@@ -4,6 +4,7 @@
   "private": true,
   "license": "MIT OR Apache-2.0",
   "devDependencies": {
+    "@convesoft/mara": "0.4.0-rc.1",
     "@convesoft/nx-rust": "1.0.0-rc.1",
     "nx": "24.0.6"
   },

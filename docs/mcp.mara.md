@@ -79,25 +79,38 @@ in [Using zban with agents](agents.mara.md#setup).
 
 ## Requirement
 
-:::mara requirement REQ-MCP-STDIO
-:mid: 01M764FJ3ZY1HWBNVEGEVYMDFR
-:title: Serve zban over MCP
-:status: accepted
-:satisfies: NEED-FIND-NEXT
-:satisfies: NEED-TRACK-PROGRESS
-:satisfies: NEED-BRANCH-SAFE
+---
+
+<a id="01M764FJ3ZY1HWBNVEGEVYMDFR"></a>
+
+### Serve zban over MCP
+
+| Type | Requirement |
+| --- | --- |
+| ID | REQ-MCP-STDIO |
+| Status | Accepted |
+| Satisfies | [NEED-FIND-NEXT](product.mara.md#01M764FJ3ZKQYBEXD73381XSPQ) |
+| Satisfies | [NEED-TRACK-PROGRESS](product.mara.md#01M764FJ3Z6S4M6YKX2NXB78TK) |
+| Satisfies | [NEED-BRANCH-SAFE](product.mara.md#01M764FJ3Z4B0WDVBR7JXWBR5B) |
 
 `zban mcp` runs an MCP server over stdio. Each tool call may name the directory to search for the project from, so one server serves any project or worktree. Without it, the server searches from the directory given with `-C`, or else from its working directory. It exposes listing, showing, creating, updating, deleting and checking issues as tools whose input schemas accept the same arguments as the command line.
-:::
+
+---
 
 ## Design
 
-:::mara design DES-MCP-TOOLS
-:mid: 01M764FJ3Z6VP70QDFVWGMZFB8
-:title: MCP tools and server instructions
-:status: accepted
-:satisfies: REQ-MCP-STDIO
-:satisfies: REQ-AGENT-GUIDE
+---
+
+<a id="01M764FJ3Z6VP70QDFVWGMZFB8"></a>
+
+### MCP tools and server instructions
+
+| Type | Design |
+| --- | --- |
+| ID | DES-MCP-TOOLS |
+| Status | Accepted |
+| Satisfies | [REQ-MCP-STDIO](#01M764FJ3ZY1HWBNVEGEVYMDFR) |
+| Satisfies | [REQ-AGENT-GUIDE](agents.mara.md#01M764FJ3Z4GXPTR8FHAF3XX7E) |
 
 | Tool | Operation |
 | --- | --- |
@@ -112,5 +125,4 @@ The parameters of each tool are the options of its command, named with underscor
 
 Every tool accepts an optional `directory`, an absolute path with the meaning of the CLI's `-C`: the project is searched upward from it. A relative path is rejected. The project is resolved on every call, from the call's `directory`, then the server's `-C`, then the server's working directory.
 
-Each tool result carries the JSON document the CLI prints with `--json`, both as structured content and as text. Failures are tool errors with the same error codes; a check that finds errors is not a failure, because its findings are the result. The server's `instructions` are the agent guide rendered for MCP, in full when a project is found at startup and as the short note otherwise ([[DES-AGENT-GUIDE]]). When no project is found, the server still starts, and every tool without a `directory` fails with `project_not_found`, with a message suggesting `directory`. v1 offers no resources or prompts, and no tool for `init`, which is a one-time human action.
-:::
+Each tool result carries the JSON document the CLI prints with `--json`, both as structured content and as text. Failures are tool errors with the same error codes; a check that finds errors is not a failure, because its findings are the result. The server's `instructions` are the agent guide rendered for MCP, in full when a project is found at startup and as the short note otherwise ([DES-AGENT-GUIDE](agents.mara.md#01M764FJ3ZPFMKF31AGPP8X9PA)). When no project is found, the server still starts, and every tool without a `directory` fails with `project_not_found`, with a message suggesting `directory`. v1 offers no resources or prompts, and no tool for `init`, which is a one-time human action.

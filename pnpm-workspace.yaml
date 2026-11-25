@@ -1,4 +1,7 @@
 allowBuilds:
   nx: true
 minimumReleaseAgeExclude:
+  - '@convesoft/mara@0.4.0-rc.1'
+  - '@convesoft/mara-linux-arm64-gnu@0.4.0-rc.1'
+  - '@convesoft/mara-linux-x64-gnu@0.4.0-rc.1'
   - '@convesoft/nx-rust@1.0.0-rc.1'

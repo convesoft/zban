@@ -42,8 +42,8 @@ Staying small is an explicit goal (`GOAL-SMALL-TOOL`).
 - If work reveals a new or changed product decision, update the Mara items first
   (in the same change), then cite them. Do not leave decisions only in an issue,
   a commit message or a PR.
-- Read a cited item with the Mara MCP `get` tool or `mara get <ID>`, and follow
-  `related` for its context.
+- Read a cited item with `pnpm mara get <ID>`, and follow
+  `pnpm mara relation list <ID>` for its context.
 
 ## Working on an issue
 
@@ -75,13 +75,16 @@ user before implementing it.
 
 ## Mara
 
-- Use the Mara skill and MCP tools, or the `mara` CLI, with this directory as the
-  project root. Inspect `schema_get` guidance before choosing a flavour or relation.
-- After changing knowledge, run schema and project validation and require
-  `valid: true` with complete evaluation. The engineering policies require every
-  accepted requirement to have an accepted basis and an accepted verification,
-  and every accepted design to have an accepted basis.
-- `accepted` means agreed, not implemented or tested. Cite actual test runs as
+- Use `@convesoft/mara` from the repository's dev dependencies via `pnpm mara`.
+  Run `pnpm mara prime` for the Mara workflow guide, and inspect
+  `pnpm mara schema list` and `pnpm mara schema get <name>` before choosing a
+  type or relation.
+- After changing knowledge, run `pnpm mara project fix`,
+  `pnpm mara schema validate` and `pnpm mara project validate`, and require 0
+  errors. The engineering rules require every accepted requirement to have an
+  accepted basis and an accepted verification, and every accepted design to have
+  an accepted basis.
+- `Accepted` means agreed, not implemented or tested. Cite actual test runs as
   evidence of completion.
 - Link implementing code with comment markers on the declaration, for example
   `// @mara implements DES-READINESS` (see `.mara/README.md`).

@@ -1,35 +1,29 @@
 # Project knowledge
 
-This project uses Mara 0.4.0-alpha.1 with the engineering template. Canonical
-knowledge lives in `*.mara.md` files; the schema, policies, queries, views and
-gates live in this directory. No starter knowledge items are generated.
+This project uses `@convesoft/mara` (`0.4.0-rc.1`, installed as a dev dependency)
+with the engineering template. Canonical knowledge lives in `docs/*.mara.md`;
+the configuration, schema and Soufflé rules live in this directory.
 
-From the project root, validate with:
+After `pnpm install`, fetch the pinned Rust tree-sitter grammar and validate
+from the project root:
 
 ```sh
-mara schema validate
-mara project validate
+pnpm mara code add rust
+pnpm mara schema validate
+pnpm mara project validate
 ```
+
+Run `pnpm mara prime` for the full agent workflow guide.
 
 ## Rust code links
 
-`project.toml` configures Rust symbol indexing with `rust-analyzer scip` for
-unignored `.rs` files. Install the component on each development machine:
+`config.toml` configures Rust code-marker scanning for `src/**/*.rs` and
+`tests/**/*.rs` with a pinned tree-sitter grammar (`pnpm mara code add rust`).
+Without the cached grammar, Mara falls back to basic comment-prefix scanning and
+reports a diagnostic.
 
-```sh
-rustup component add rust-analyzer
-```
-
-File references use `code:src/main.rs`. Symbol references use
-`code:<path>::rust::<exact-SCIP-descriptor>`; copy exact references returned by
-Mara navigation rather than guessing descriptors. The engineering schema's
-`implements` relation connects code to requirements, designs or verifications.
-After creating the target item, add an inverse assertion with
-`mara relation add <item-ID> implemented_by <code-reference>`, then inspect
-the item with `mara related <item-ID>`.
-
-The bundled Tree-sitter grammar/query assets enable comment markers and expanded
-declaration content. Put a marker on its own comment line before a supported
+The engineering schema's `implements` relation connects code to requirements,
+designs or verifications. Put a marker on its own comment line before a
 declaration, using an existing item ID:
 
 ```rust
@@ -37,6 +31,4 @@ declaration, using an existing item ID:
 fn example() {}
 ```
 
-Markers may target requirements, designs or verifications. Confirm the exact
-symbol endpoint with `mara related <item-ID>`; validation alone also accepts
-file-level associations. Indexing can invoke Cargo and build scripts.
+Inspect links for an item with `pnpm mara relation list <ID>`.

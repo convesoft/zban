@@ -23,14 +23,15 @@ design that govern that topic.
 
 ## How to read the specification
 
-The `:::mara` blocks are [Mara](https://github.com/convesoft/mara) items: goals
-(`GOAL-`), needs (`NEED-`), terms (`TERM-`), scenarios (`SCN-`), requirements
-(`REQ-`), designs (`DES-`), decisions (`ADR-`), risks (`RISK-`), verifications
-(`VER-`) and validations (`VAL-`). Lines such as `:satisfies: NEED-…` connect
-items to each other. `[[ID]]` mentions another item.
+Each specification section with an anchor and metadata table is a
+[Mara](https://github.com/convesoft/mara) item: goals (`GOAL-`), needs
+(`NEED-`), terms (`TERM-`), scenarios (`SCN-`), requirements (`REQ-`), designs
+(`DES-`), decisions (`ADR-`), risks (`RISK-`), verifications (`VER-`) and
+validations (`VAL-`). Table rows such as `Satisfies` connect items to each
+other, and Markdown links inside item bodies mention related items.
 
-`status: accepted` means the knowledge is agreed. It does not mean the feature
-is implemented or tested. `draft` marks open proposals, and `retired` marks
+`Accepted` status means the knowledge is agreed. It does not mean the feature
+is implemented or tested. `Draft` marks open proposals, and `Retired` marks
 history that no longer applies.
 
 The work to build zban is tracked in [`.zban/`](../.zban/) using zban's own
